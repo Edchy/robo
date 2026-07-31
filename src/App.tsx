@@ -350,13 +350,16 @@ function DayDialog({
                       </span>
                     )}
                   </span>
+                  {/* The tag is a sibling of the hours, not a child: nested, it
+                      pushed the figure left, so only the rows without a tag
+                      lined up with the right edge. */}
+                  {s.standby && (
+                    <span className="sheet__tag">
+                      {s.kind === 'sleep' ? 'sömn' : 'jour'}
+                    </span>
+                  )}
                   <span className="sheet__hours">
                     {formatHours(s.hours)} t
-                    {s.standby && (
-                      <span className="sheet__tag">
-                        {s.kind === 'sleep' ? 'sömn' : 'jour'}
-                      </span>
-                    )}
                   </span>
                 </div>
 
