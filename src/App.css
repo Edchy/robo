@@ -250,11 +250,30 @@ body {
 
 /* The month at its three rates, sitting between the header and the calendar.
    Read left to right in descending rate: work, sleep, jour. */
+/* Keeps the gap below when the sum line is absent — someone holding only
+   worked hours has nothing to add up, and the calendar must not ride up. */
 .tot {
   display: flex;
   flex-wrap: wrap;
   gap: 0.375rem;
   margin: 0 0 1.25rem;
+}
+
+/* ...and closes it again when the sum does follow, since that carries its
+   own bottom margin. */
+.tot:has(+ .tot__sum) { margin-bottom: 0.5rem; }
+
+/* The sum of the three cards. Quiet — it is context for them, not a fourth
+   figure — and separated by a rule so it reads as their total rather than
+   another item in the row. */
+.tot__sum {
+  margin: 0 0 1.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.8125rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .tot__item {

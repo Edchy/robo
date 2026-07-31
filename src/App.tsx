@@ -528,11 +528,15 @@ function MonthView({
         <span className="month__who"> · {me}</span>
       </h1>
 
-      {/* The month at three rates. Never summed into one figure: an hour awake
-          on the floor, an hour asleep here and an hour on call at home are paid
-          differently, so a single total would answer no question anyone has.
+      {/* The month at three rates, each paid differently — an hour awake on the
+          floor, an hour asleep here, an hour on call at home. The three are
+          exclusive: every scheduled hour lands in exactly one, so they add up.
           Zero rows are dropped rather than shown as "0 h" — most people hold
-          only one or two of the three. */}
+          only one or two of the three.
+
+          The sum is printed underneath because the cards alone do not say
+          whether "Arbete" is the awake hours or the lot. It is a span of time,
+          not a payable figure, and says so in words. */}
       <dl className="tot">
         <div className="tot__item">
           <dt className="tot__label">Arbete</dt>
@@ -551,6 +555,14 @@ function MonthView({
           </div>
         )}
       </dl>
+
+      {/* Only worth saying when there is more than one figure to add. */}
+      {(totals.sleep > 0 || totals.jour > 0) && (
+        <p className="tot__sum">
+          {formatHours(totals.worked + totals.sleep + totals.jour)} h totalt på
+          schemat
+        </p>
+      )}
 
       <section className="cal" aria-label="Kalender">
         {WEEK_HEADS.map((d, i) => (
