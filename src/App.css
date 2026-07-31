@@ -22,13 +22,16 @@
      darkens into, so the pair reads as the same thing at two times of day
      rather than as two unrelated colours. Both carry white numerals clear of
      4.5:1 (5.0 and 10.1), and stand 2.0:1 apart from each other. Colour is
-     never the only signal — the moon marks a night independently. */
+     never the only signal — an awake night is marked by the moon, and jour by
+     the hatch, independently of the fill underneath. */
   --band-day: oklch(54.5% 0.1 265);
   --band-night: oklch(38% 0.085 265);
 
   /* Jour — on call from home. Same hue as the shifts it belongs beside, but
-     pale and hatched: present on the calendar without claiming the weight of a
-     day you actually travelled in. Dark text, unlike the two solid fills. */
+     pale: present on the calendar without claiming the weight of a day you
+     actually travelled in. Dark text, unlike the two solid fills. The hatch
+     that marks jour is separate — it lies over whatever fill the day has, so
+     a day can be both a shift and jour without the two competing. */
   --band-jour: oklch(91% 0.035 265);
   --band-jour-line: oklch(78% 0.06 265);
   --band-jour-ink: oklch(38% 0.06 265);
@@ -189,14 +192,8 @@ body {
   box-shadow: none;
 }
 
-/* The initials button is the one control that shows state rather than offering
-   an action, so it gets a solid fill to set it apart. Green rather than blue:
-   the calendar's blues *mean* something — day pass, night pass, jour — and a
-   blue chip in the header would read as a fourth entry in that key. Green sits
-   outside that vocabulary, so it marks "you" without joining the legend.
-   Deep enough to carry white at 4.9:1. */
-/* Each person's hue is handed in as --person by a `p0`…`p11` class, so this
-   rule is written once rather than twelve times. */
+/* Each person's hue is handed in as --person by a `p0`…`p13` class, so the
+   rules that use it are written once rather than fourteen times. */
 .p0  { --person: var(--p0);  }
 .p1  { --person: var(--p1);  }
 .p2  { --person: var(--p2);  }
@@ -354,6 +351,9 @@ button.cal__day:active { transform: scale(0.94); }
 button.cal__day:focus-visible { z-index: 1; }
 
 .cal__num {
+  /* Above the jour hatch, which covers the whole cell. */
+  position: relative;
+  z-index: 1;
   font-size: 0.8125rem;
   line-height: 1;
 }
@@ -380,27 +380,35 @@ button.cal__day:focus-visible { z-index: 1; }
 /* The filled cells keep white numerals and just gain weight. */
 .cal__day--today.cal__day--on .cal__num { font-weight: 750; }
 
-/* Jour sitting on a day that already has a fill — worked, or a night's tail.
-   A wedge in the top-right corner, the one corner always free: the moon takes
-   top-left, and the arrows the two bottom ones (out to the right, in from the
-   left). Uses the same pale jour ink as the jour-only cell, so "on call" looks
-   the same wherever it appears. */
+/* Jour sitting on a day that already has a fill — worked, a night, or a
+   night's tail. Stripes laid over the cell rather than a mark in the corner,
+   so the two facts compose: the fill still says what the day was, and the
+   hatch adds "and on call". A dark striped square therefore reads as night
+   shift *and* jour, which is a real combination — jour 00:00–morning, then
+   the evening's night shift on the same date.
+
+   Translucent white rather than the jour ink, so one rule works over every
+   fill: day, night, and the pale tail alike. */
 .cal__jour {
   position: absolute;
-  right: 0;
-  top: 0;
-  width: 0;
-  height: 0;
-  border-style: solid;
-  border-width: 0 0.5rem 0.5rem 0;
-  border-color: transparent var(--band-jour) transparent transparent;
-  border-top-right-radius: var(--r-sm);
+  inset: 0;
+  border-radius: inherit;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 4px,
+    oklch(100% 0 0 / 0.28) 4px 5px
+  );
+  pointer-events: none;
 }
 
-/* On the pale tail cell the light wedge would vanish, so it takes the darker
-   edge ink instead. */
+/* The pale tail cell carries dark ink, so white stripes would disappear into
+   it — there it hatches in the jour edge colour instead. */
 .cal__day--tail .cal__jour {
-  border-color: transparent var(--band-jour-line) transparent transparent;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 4px,
+    var(--band-jour-line) 4px 5px
+  );
 }
 
 /* A workday: a day you get up and travel in. Filled — the only thing with
@@ -418,26 +426,26 @@ button.cal__day:focus-visible { z-index: 1; }
 /* Jour: on call, but at home. Only 1.18:1 against an empty cell, so the
    diagonal hatch — not the tint — is what separates the two; the stripes read
    as "held, not filled" and survive being printed in grey. */
+/* A day of nothing but jour: the pale jour fill, flat. The stripes come from
+   the .cal__jour overlay, which every jour day carries — so a jour-only cell
+   and a worked day with jour are hatched by the same rule, and only the fill
+   underneath tells them apart. */
 .cal__day--jour {
-  background: repeating-linear-gradient(
-    -45deg,
-    var(--band-jour) 0 4px,
-    var(--band-jour-line) 4px 5px
-  );
+  background: var(--band-jour);
   border-color: var(--band-jour-line);
   color: var(--band-jour-ink);
 }
 
+/* The pale jour fill needs the darker stripe, like the tail cell. */
+.cal__day--jour .cal__jour {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 4px,
+    var(--band-jour-line) 4px 5px
+  );
+}
+
 .cal__day--jour .cal__num { font-weight: 560; }
-
-/* The moon says which night this belongs to; on the pale fill it takes the
-   dark ink rather than the white the solid cells use. */
-.cal__moon--jour { color: var(--band-jour-ink); }
-
-/* A day worked then covered by jour: the cell keeps the day fill, so the moon
-   stays white but is held back, saying "the night is covered" rather than
-   "you worked it". */
-.cal__moon--onjour { opacity: 0.55; }
 
 .cal__day--on .cal__num { font-weight: 620; }
 
@@ -525,22 +533,24 @@ button.cal__day:focus-visible { z-index: 1; }
 .key__swatch--night { background: var(--band-night); }
 
 .key__swatch--jour {
-  background: repeating-linear-gradient(
-    -45deg,
-    var(--band-jour) 0 3px,
-    var(--band-jour-line) 3px 4px
-  );
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0 3px,
+      var(--band-jour-line) 3px 4px
+    ),
+    var(--band-jour);
   box-shadow: inset 0 0 0 1px var(--band-jour-line);
 }
 
-/* A miniature of the calendar cell: the day fill with the jour wedge in its
-   top-right corner, so the key shows the mark exactly as it appears. */
+/* A miniature of the striped cell: the day fill under the same hatch the
+   calendar lays over any day carrying jour. */
 .key__swatch--wedge {
   background:
-    linear-gradient(
-      225deg,
-      var(--band-jour) 0 0.28rem,
-      transparent 0.28rem
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0 3px,
+      oklch(100% 0 0 / 0.3) 3px 4px
     ),
     var(--band-day);
 }
@@ -698,7 +708,6 @@ button.cal__day:focus-visible { z-index: 1; }
   flex-shrink: 0;
 }
 
-.sheet__moon--jour { color: var(--band-jour-ink); }
 
 .sheet__moon svg { display: block; width: 100%; height: 100%; }
 
@@ -820,14 +829,45 @@ button.cal__day:focus-visible { z-index: 1; }
 /* Nights take the deeper fill, the same step the calendar makes. */
 .pass--spills { background: var(--band-night); }
 
-/* Jour rows carry the same hatch as the calendar cell, and dark ink like the
-   continuation row — the two pale row types behave alike. */
-.pass--jour {
+/* Any jour in the day hatches the row, over whatever fill it has — the same
+   rule and the same angle as the calendar cell, so a row and its square are
+   visibly the same day. A striped night row is a night shift that also carries
+   jour, which is a real combination rather than two competing labels. */
+.pass--hasjour::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
   background: repeating-linear-gradient(
     -45deg,
-    var(--band-jour) 0 5px,
+    transparent 0 5px,
+    oklch(100% 0 0 / 0.22) 5px 6px
+  );
+  pointer-events: none;
+}
+
+/* The pale rows carry dark ink, so white stripes would vanish into them. */
+.pass--jour.pass--hasjour::before,
+.pass--tail.pass--hasjour::before {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 5px,
     var(--band-jour-line) 5px 6px
   );
+}
+
+/* Above the hatch, so the times stay crisp. */
+.pass__date,
+.pass__shifts,
+.pass__today { position: relative; z-index: 1; }
+
+/* Jour rows carry the same hatch as the calendar cell, and dark ink like the
+   continuation row — the two pale row types behave alike. */
+/* A day of nothing but jour: the pale jour fill, flat. The stripes come from
+   .pass--hasjour, which every jour row carries — so a jour-only row and a
+   worked row with jour are hatched by one rule, and only the fill differs. */
+.pass--jour {
+  background: var(--band-jour);
   color: var(--band-jour-ink);
   --ink-on-row: var(--band-jour-ink);
   --faint-on-row: var(--band-jour-ink);
@@ -975,7 +1015,6 @@ button.cal__day:focus-visible { z-index: 1; }
 
 .pass__moon svg { display: block; width: 100%; height: 100%; }
 
-.pass__moon--jour { color: var(--band-jour-ink); }
 
 /* Matches the dimmed row rather than going lighter: at 0.75rem there is no
    large-text exemption, and anything past the row's faint ink drops below

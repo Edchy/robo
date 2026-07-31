@@ -340,13 +340,11 @@ function DayDialog({
                 <div className="sheet__row">
                   <span className="sheet__time">
                     {s.start} – {s.end}
-                    {night && (
-                      <span
-                        className={`sheet__moon ${
-                          s.standby ? 'sheet__moon--jour' : ''
-                        }`}
-                        aria-hidden="true"
-                      >
+                    {/* Only on awake nights — jour and sömn are overnight by
+                        definition, and the tag beside the hours already says
+                        which. Same rule as the list. */}
+                    {night && !s.standby && (
+                      <span className="sheet__moon" aria-hidden="true">
                         <MoonIcon />
                       </span>
                     )}
@@ -618,16 +616,12 @@ function MonthView({
                     <ArrowLeftIcon />
                   </span>
                 )}
-                {allStandby && (
-                  <span className="cal__moon cal__moon--jour" aria-hidden="true">
-                    <MoonIcon />
-                  </span>
-                )}
-                {/* A free morning that still picks up jour in the evening — the
-                    cell is a tail, so the jour needs its own mark. */}
-                {hasJour && !allStandby && (
-                  <span className="cal__jour" aria-hidden="true" />
-                )}
+                {/* Jour hatches the cell over whatever fill it has — a
+                    jour-only day and a tail that picks up jour in the evening
+                    are the same mark on different backgrounds. No moon: jour
+                    is always overnight, so the icon would say nothing the
+                    stripes do not. */}
+                {hasJour && <span className="cal__jour" aria-hidden="true" />}
               </button>
             );
           }
@@ -673,28 +667,22 @@ function MonthView({
               onClick={() => setOpenDay(day)}
             >
               <span className="cal__num">{day}</span>
-              {/* A worked day that also carries jour. The fill is already
-                  spoken for by the work, so the jour gets a corner wedge —
-                  present on every such day, not only the jour-only ones. */}
-              {hasJour && (
-                <span className="cal__jour" aria-hidden="true" />
-              )}
-              {/* Moon in the top corner labels the day; the arrow leaves from
-                  the bottom right, the side it carries into tomorrow. The
-                  count of trips is no longer drawn — it stays in the label
-                  below, and the list spells it out in full. */}
+              {/* Jour hatches the whole cell, over whatever fill the day has.
+                  A dark striped square is therefore a night shift that also
+                  carries jour — 00:00 to morning on call, then the evening's
+                  night shift on the same date. */}
+              {hasJour && <span className="cal__jour" aria-hidden="true" />}
+              {/* The moon marks a night worked awake; the arrow leaves from the
+                  bottom right, the side it carries into tomorrow. A night that
+                  is merely covered by jour gets the stripes instead — the moon
+                  would be saying what they already say. */}
               {spillsOver && (
                 <>
-                  {/* On a jour-after day the moon marks that the night is
-                      covered, not worked, so it takes the jour ink. */}
-                  <span
-                    className={`cal__moon ${
-                      worksThroughNight ? '' : 'cal__moon--onjour'
-                    }`}
-                    aria-hidden="true"
-                  >
-                    <MoonIcon />
-                  </span>
+                  {worksThroughNight && (
+                    <span className="cal__moon" aria-hidden="true">
+                      <MoonIcon />
+                    </span>
+                  )}
                   <span className="cal__arrow cal__arrow--out" aria-hidden="true">
                     <ArrowRightIcon />
                   </span>
@@ -719,11 +707,11 @@ function MonthView({
           <span className="key__swatch key__swatch--jour" aria-hidden="true" />
           nattjour
         </li>
-        {/* The wedge, not a fill: it marks jour landing on a day that already
-            has one — which is most of them. */}
+        {/* Stripes over a fill, not a fill of their own: they say "and jour"
+            on top of whatever the day already was. */}
         <li className="key__item">
           <span className="key__swatch key__swatch--wedge" aria-hidden="true" />
-          jour del av dygnet
+          pass + jour
         </li>
       </ul>
 
@@ -752,14 +740,17 @@ function MonthView({
             const spills = dayShifts.some(
               (s) => !s.standby && continuesTomorrow(s, shifts)
             );
+            // Any jour at all stripes the row, over whatever fill it has — the
+            // same rule as the calendar cell, so a row and its square match.
+            const hasJour = dayShifts.some((s) => s.kind === 'jour');
             return (
               <div
                 key={day}
                 className={`pass ${allJour ? 'pass--jour' : ''} ${
                   allTail && !allJour ? 'pass--tail' : ''
                 } ${spills && !allJour ? 'pass--spills' : ''} ${
-                  day === today ? 'pass--today' : ''
-                }`}
+                  hasJour ? 'pass--hasjour' : ''
+                } ${day === today ? 'pass--today' : ''}`}
                 aria-current={day === today ? 'date' : undefined}
               >
                 <span className="pass__date">
@@ -775,14 +766,12 @@ function MonthView({
                       <span className="pass__time">
                         {s.start} – {s.end}
                         {/* The same moon the calendar puts on this day, so the
-                            two views name a night the same way. */}
-                        {continuesTomorrow(s, shifts) && (
-                          <span
-                            className={`pass__moon ${
-                              s.standby ? 'pass__moon--jour' : ''
-                            }`}
-                            aria-label={s.standby ? 'jour' : 'nattpass'}
-                          >
+                            two views name a night the same way. Only on awake
+                            nights: jour and sömn are overnight by definition
+                            and already say so in the word beside them, so the
+                            icon would be a third way of saying "night". */}
+                        {continuesTomorrow(s, shifts) && !s.standby && (
+                          <span className="pass__moon" aria-label="nattpass">
                             <MoonIcon />
                           </span>
                         )}
