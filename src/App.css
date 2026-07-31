@@ -679,11 +679,27 @@ button.cal__day:focus-visible { z-index: 1; }
   border-left: 3px solid var(--band-day);
 }
 
-/* Awake through the night: the deeper of the two shift colours, as on the
-   calendar, so a night block and a night cell are the same subject. */
+/* The night shift. Solid rather than a wash: at wash strength it sat 2% off
+   the ordinary work block and was indistinguishable from it, which defeated
+   the point. Filled like the calendar cell and the list row, so a night is the
+   same colour wherever it appears — and it carries white text like they do. */
 .sheet__shift--night {
-  background: color-mix(in oklab, var(--band-night) 11%, var(--surface));
+  background: var(--band-night);
   border-left-color: var(--band-night);
+  color: oklch(100% 0 0);
+}
+
+/* Everything inside the filled block goes to white. The muted greys these
+   spans use elsewhere are tuned for a near-white background and would fail on
+   this one. */
+.sheet__shift--night .sheet__note,
+.sheet__shift--night .sheet__with-label,
+.sheet__shift--night .sheet__hours { color: oklch(100% 0 0 / 0.82); }
+
+.sheet__shift--night .sheet__mate {
+  background: oklch(100% 0 0 / 0.16);
+  border-color: oklch(100% 0 0 / 0.3);
+  color: oklch(100% 0 0);
 }
 
 /* Asleep at the workplace. Between work and jour in both meaning and weight:
