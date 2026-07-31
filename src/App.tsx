@@ -285,9 +285,6 @@ function DayDialog({
   }, []);
 
   const { worked, sleep, jour } = splitHours(dayShifts);
-  const trips = dayShifts.filter(
-    (s) => !s.standby && !isContinuation(s, allShifts)
-  );
 
   return (
     <dialog
@@ -423,10 +420,6 @@ function DayDialog({
               <dd>{formatHours(jour)}</dd>
             </div>
           )}
-          <div className="sheet__fact">
-            <dt>Resor in</dt>
-            <dd>{trips.length}</dd>
-          </div>
         </dl>
       </div>
     </dialog>

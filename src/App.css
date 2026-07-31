@@ -838,11 +838,12 @@ button.cal__day:focus-visible { z-index: 1; }
   border-top: 1px solid var(--line);
 }
 
-/* Sized to the label rather than to an equal share: with four tiles and words
-   as long as "Arbetstimmar", equal columns clipped the text. They wrap to a
-   second row instead when the widest day needs it. */
+/* Sized to the label rather than to an equal share: words as long as
+   "Arbetstimmar" get clipped by equal columns. They wrap when the panel is too
+   narrow for all three, and do not grow to fill the row they land on — a lone
+   tile stretched to twice its neighbours' width reads as more important. */
 .sheet__fact {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: max-content;
   padding: 0.5rem 0.625rem;
   border-radius: var(--r-sm);
