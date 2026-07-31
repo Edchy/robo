@@ -5,6 +5,19 @@ Drop in the monthly schedule PDF, pick your initials, see only your own shifts.
 Everything runs in the browser: the PDF is parsed locally with pdf.js and is
 never uploaded. Deploys as a static site.
 
+## UI-jämförelse
+
+`main` contains two complete interfaces behind a small test bar:
+
+- **Version A** is the original interface, preserved on `codex/original-ui`.
+- **Version B** is the redesign, preserved on `codex/reimagined-ui`.
+
+Version B opens by default. The test bar links to `?version=a` and `?version=b`.
+Both versions use the same on-device storage, so a colleague can upload the PDF
+and choose their initials once, then switch without starting over. The version
+styles are loaded as separate chunks so their global CSS cannot affect each
+other.
+
 Av säkerhets- och prestandaskäl tar appen emot PDF-filer på högst 25 MB och 20
 sidor. Ett månadsschema ska ligga långt under båda gränserna.
 
@@ -36,7 +49,7 @@ Two buttons under the shift list, both entirely client-side:
 - **Lägg till i kalendern** downloads an `.ics` file (`src/ics.ts`) that imports
   into Apple Calendar, Google Calendar and Outlook. Night shifts become single
   events spanning midnight, which is precisely what the PDF cannot show.
-- **Skriv ut** calls `window.print()`. A print stylesheet in `App.css` swaps to
+- **Skriv ut** calls `window.print()`. Each version's print stylesheet swaps to
   white, hides the controls, adds the person's initials to the heading and
   keeps shifts from splitting across pages — so "Save as PDF" yields a clean
   sheet without any PDF library in the bundle.
