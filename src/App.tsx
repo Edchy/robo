@@ -1,0 +1,822 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { readSchedulePdf } from './pdf';
+import {
+  formatHours,
+  shiftsFor,
+  isContinuation,
+  continuesTomorrow,
+  personHues,
+  workdaysOf,
+  splitHours,
+  alongsideOn,
+  ScheduleError,
+  type Schedule,
+  type Shift,
+} from './schedule';
+import {
+  clearSchedule,
+  forgetAll,
+  loadMe,
+  loadSchedule,
+  saveMe,
+  saveSchedule,
+} from './storage';
+import './App.css';
+
+export default function App() {
+  const [schedule, setSchedule] = useState<Schedule | null>(null);
+  const [me, setMe] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Restore the last month so the PDF need not be dropped again. Anything
+  // expired or unreadable is cleared by loadSchedule itself.
+  useEffect(() => {
+    setMe(loadMe());
+    setSchedule(loadSchedule());
+  }, []);
+
+  const choosePerson = (code: string) => {
+    setMe(code);
+    saveMe(code);
+  };
+
+  const handleFile = async (file: File) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const parsed = await readSchedulePdf(file);
+      setSchedule(parsed);
+      saveSchedule(parsed);
+      // Keep a remembered person only if they appear in this month's file.
+      const saved = loadMe();
+      setMe(saved && parsed.people.includes(saved) ? saved : null);
+    } catch (e) {
+      setError(
+        e instanceof ScheduleError
+          ? e.message
+          : 'Något gick fel när filen lästes. Försök igen.'
+      );
+      setSchedule(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!schedule) {
+    return <Dropzone onFile={handleFile} busy={busy} error={error} />;
+  }
+  if (!me) {
+    return (
+      <PersonPicker
+        schedule={schedule}
+        onPick={choosePerson}
+        onBack={() => setSchedule(null)}
+      />
+    );
+  }
+  return (
+    <MonthView
+      schedule={schedule}
+      me={me}
+      onChangePerson={() => setMe(null)}
+      onNewFile={() => {
+        // Drop the cache as well, or a refresh would bring back the month the
+        // user just dismissed.
+        clearSchedule();
+        setSchedule(null);
+        setError(null);
+      }}
+      onForget={() => {
+        // Remove everything stored on the device, so a shared phone is left
+        // with nothing of this user.
+        forgetAll();
+        setMe(null);
+        setSchedule(null);
+        setError(null);
+      }}
+    />
+  );
+}
+
+/* ---------------------------------------------------------------- dropzone */
+
+function Dropzone({
+  onFile,
+  busy,
+  error,
+}: {
+  onFile: (f: File) => void;
+  busy: boolean;
+  error: string | null;
+}) {
+  const [over, setOver] = useState(false);
+
+  return (
+    <main className="shell shell--center">
+      <div className="intro">
+        <h1 className="intro__title">Mitt schema</h1>
+        <p className="intro__sub">
+          Släpp månadens schema-PDF här så visas bara dina pass.
+        </p>
+      </div>
+
+      <label
+        className={`drop ${over ? 'drop--over' : ''} ${busy ? 'drop--busy' : ''}`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setOver(true);
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setOver(false);
+          const file = e.dataTransfer.files[0];
+          if (file) onFile(file);
+        }}
+      >
+        <input
+          type="file"
+          accept="application/pdf,.pdf"
+          hidden
+          disabled={busy}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) onFile(file);
+            e.target.value = '';
+          }}
+        />
+        <span className="drop__icon" aria-hidden="true">
+          {busy ? <Spinner /> : <DocIcon />}
+        </span>
+        <span className="drop__lead">
+          {busy ? 'Läser schemat…' : 'Släpp PDF-filen här'}
+        </span>
+        {!busy && <span className="drop__hint">eller tryck för att välja fil</span>}
+      </label>
+
+      {error && (
+        <p className="alert" role="alert">
+          {error}
+        </p>
+      )}
+
+      <details className="privacy">
+        <summary className="privacy__line">
+          <LockIcon /> Filen stannar i din telefon — inget laddas upp.
+        </summary>
+        <div className="privacy__body">
+          <p>
+            Schemat läses direkt i telefonen eller datorn. PDF-filen skickas
+            aldrig vidare — varken till oss, till arbetsgivaren eller till någon
+            annan. Appen fungerar även i flygplansläge när sidan väl har
+            laddats.
+          </p>
+          <p>
+            För att du inte ska behöva leta upp PDF-filen varje gång sparas
+            månadens schema och dina initialer i webbläsaren — på din egen
+            enhet. Själva PDF-filen sparas aldrig, och schemat raderas
+            automatiskt när månaden är slut. Trycker du på{' '}
+            <strong>Glöm mig</strong> försvinner allt direkt.
+          </p>
+          <p>
+            Tänk på att PDF-filen innehåller <em>hela</em> arbetsplatsens schema,
+            precis som när du får den via mejl. Appen visar bara dina pass — men
+            filen i sig är densamma. Dela den därför inte vidare.
+          </p>
+        </div>
+      </details>
+    </main>
+  );
+}
+
+/* ------------------------------------------------------------------ picker */
+
+function PersonPicker({
+  schedule,
+  onPick,
+  onBack,
+}: {
+  schedule: Schedule;
+  onPick: (code: string) => void;
+  onBack: () => void;
+}) {
+  // Resolved across the whole roster at once, so no two people share a hue.
+  const hues = useMemo(() => personHues(schedule.people), [schedule.people]);
+
+  return (
+    <main className="shell">
+      <header className="head">
+        {/* "PDF" names the thing, not the act. The label is short, so the
+            accessible name spells out what pressing it does. */}
+        <button className="btn" onClick={onBack} aria-label="Byt PDF-fil">
+          <span aria-hidden="true">←</span> PDF
+        </button>
+        <p className="head__title">{schedule.monthLabel}</p>
+        {/* Balances the grid so the month stays centred with one button. */}
+        <span />
+      </header>
+
+      <h2 className="picker__title">Vem är du?</h2>
+      <p className="picker__sub">Ditt val sparas till nästa gång.</p>
+
+      <div className="picker__grid">
+        {schedule.people.map((code) => (
+          <button
+            key={code}
+            className={`chip p${hues.get(code) ?? 0}`}
+            onClick={() => onPick(code)}
+          >
+            {code}
+          </button>
+        ))}
+      </div>
+    </main>
+  );
+}
+
+/* -------------------------------------------------------------- month view */
+
+const WEEK_HEADS = ['M', 'T', 'O', 'T', 'F', 'L', 'S'];
+const WEEK_LONG = [
+  'måndag',
+  'tisdag',
+  'onsdag',
+  'torsdag',
+  'fredag',
+  'lördag',
+  'söndag',
+];
+
+/**
+ * Detail for one day, in a native <dialog>. Native rather than a hand-rolled
+ * overlay because showModal() brings focus trapping, Escape, inertness of the
+ * page behind, and the top layer with it — all things a div would have to
+ * reimplement, and get wrong.
+ */
+function DayDialog({
+  day,
+  dayShifts,
+  allShifts,
+  weekdayLong,
+  monthLabel,
+  schedule,
+  me,
+  onClose,
+}: {
+  day: number;
+  dayShifts: Shift[];
+  allShifts: Shift[];
+  weekdayLong: string;
+  monthLabel: string;
+  schedule: Schedule;
+  me: string;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // showModal() rather than the `open` attribute: only the former puts the
+    // dialog in the top layer and makes the rest of the page inert.
+    if (!el.open) el.showModal();
+  }, []);
+
+  const { worked, standby } = splitHours(dayShifts);
+  const trips = dayShifts.filter(
+    (s) => !s.standby && !isContinuation(s, allShifts)
+  );
+
+  return (
+    <dialog
+      ref={ref}
+      className="sheet"
+      aria-labelledby="sheet-title"
+      /* Fires on Escape and on backdrop dismissal alike, so React state and
+         the element's own open/closed state cannot drift apart. */
+      onClose={onClose}
+      /* The backdrop is part of the dialog's own box, so a click landing on
+         the element itself — rather than on the panel inside it — is a click
+         outside the content. */
+      onClick={(e) => {
+        if (e.target === ref.current) ref.current?.close();
+      }}
+    >
+      <div className="sheet__panel">
+        {/* The date is the heading, so the number carries the weight and the
+            weekday and month sit under it as the qualifiers they are. */}
+        <div className="sheet__head">
+          <h2 className="sheet__title" id="sheet-title">
+            <span className="sheet__day">{day}</span>
+            <span className="sheet__when-label">
+              <span className="sheet__weekday">{weekdayLong}</span>
+              <span className="sheet__month">{monthLabel}</span>
+            </span>
+          </h2>
+          <button
+            className="sheet__close"
+            onClick={() => ref.current?.close()}
+            aria-label="Stäng"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <ul className="sheet__list">
+          {dayShifts.map((s, k) => {
+            const tail = isContinuation(s, allShifts);
+            const night = continuesTomorrow(s, allShifts);
+            // Who is on the floor at the same time — the person you actually
+            // work beside, which is not the same as sharing a written cell.
+            const alongside = alongsideOn(schedule, s, me);
+            return (
+              <li
+                key={k}
+                className={`sheet__shift ${
+                  s.standby ? 'sheet__shift--jour' : ''
+                } ${night && !s.standby ? 'sheet__shift--night' : ''}`}
+              >
+                <div className="sheet__row">
+                  <span className="sheet__time">
+                    {s.start} – {s.end}
+                    {night && (
+                      <span
+                        className={`sheet__moon ${
+                          s.standby ? 'sheet__moon--jour' : ''
+                        }`}
+                        aria-hidden="true"
+                      >
+                        <MoonIcon />
+                      </span>
+                    )}
+                  </span>
+                  <span className="sheet__hours">
+                    {formatHours(s.hours)} h
+                    {s.standby && <span className="sheet__tag">jour</span>}
+                  </span>
+                </div>
+
+                {alongside.length > 0 && (
+                  <div className="sheet__with">
+                    <span className="sheet__with-label">
+                      {s.standby ? 'På plats' : 'Med'}
+                    </span>
+                    {alongside.map((c) => (
+                      <span key={c} className="sheet__mate">
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {s.standby && (
+                  <p className="sheet__note">
+                    Beredskap hemifrån — inte arbetad tid.
+                  </p>
+                )}
+                {tail && !s.standby && (
+                  <p className="sheet__note">
+                    Forts. från natten innan — du är redan på plats.
+                  </p>
+                )}
+                {night && !s.standby && (
+                  <p className="sheet__note">Fortsätter in i nästa dygn.</p>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+
+        {/* Worked and jour hours are never added together: jour is spent at
+            home, so one figure would overstate the day. */}
+        <dl className="sheet__facts">
+          <div className="sheet__fact">
+            <dt>Arbete</dt>
+            <dd>{formatHours(worked)} h</dd>
+          </div>
+          {standby > 0 && (
+            <div className="sheet__fact">
+              <dt>Jour</dt>
+              <dd>{formatHours(standby)} h</dd>
+            </div>
+          )}
+          <div className="sheet__fact">
+            <dt>Resor in</dt>
+            <dd>{trips.length}</dd>
+          </div>
+        </dl>
+      </div>
+    </dialog>
+  );
+}
+
+function MonthView({
+  schedule,
+  me,
+  onChangePerson,
+  onNewFile,
+  onForget,
+}: {
+  schedule: Schedule;
+  me: string;
+  onChangePerson: () => void;
+  onNewFile: () => void;
+  onForget: () => void;
+}) {
+  const shifts = useMemo(() => shiftsFor(schedule, me), [schedule, me]);
+
+  // Same roster, same resolution as the picker — so the pill in the header is
+  // the colour of the chip that was tapped to get here.
+  const myHue = useMemo(
+    () => personHues(schedule.people).get(me) ?? 0,
+    [schedule.people, me]
+  );
+
+  // Every shift sits on the day it is written, nothing is copied forward.
+  const byDay = useMemo(() => {
+    const map = new Map<number, Shift[]>();
+    for (const s of shifts) {
+      const arr = map.get(s.dayNum);
+      if (arr) arr.push(s);
+      else map.set(s.dayNum, [s]);
+    }
+    return map;
+  }, [shifts]);
+
+  // Days the person actually travels in — the calendar's whole point.
+  const workdays = useMemo(() => workdaysOf(shifts), [shifts]);
+
+  const daysInMonth = schedule.days.length;
+
+  // Monday-first weekday index (0 = Monday). getUTCDay() is Sunday-0, hence +6.
+  const first = new Date(Date.UTC(schedule.year, schedule.month - 1, 1));
+  const lead = (first.getUTCDay() + 6) % 7;
+  const weekdayOf = (day: number) => (lead + day - 1) % 7;
+
+  // Which day's detail is open. Null is closed; the day number is enough,
+  // since the shifts are looked up from byDay on render.
+  const [openDay, setOpenDay] = useState<number | null>(null);
+
+  return (
+    <main className="shell">
+      <header className="head">
+        <button className="btn" onClick={onNewFile} aria-label="Läs in ny PDF-fil">
+          <span aria-hidden="true">←</span> PDF
+        </button>
+        {/* The month sits between the two controls: the thing you are looking
+            at, flanked by the two ways to change it. */}
+        <h1 className="head__title">{schedule.monthLabel}</h1>
+        {/* One grid child, so the header's 1fr/auto/1fr centring still holds.
+            The label is visible text, so the button needs no aria-label of its
+            own — it is described by the words sitting next to it. */}
+        <span className="who">
+          <span className="who__label" aria-hidden="true">
+            Schema för
+          </span>
+          {/* Named rather than described: the visible label is hidden on
+              phones, and a hidden element describes nothing — so the button
+              carries its own name at every width. */}
+          <button
+            className={`btn btn--me p${myHue}`}
+            onClick={onChangePerson}
+            aria-label={`Schema för ${me} — byt person`}
+          >
+            {me}
+          </button>
+        </span>
+      </header>
+
+      {/* The header is hidden on paper, so the printed sheet needs its own
+          title — and it is the only place that says whose schedule this is. */}
+      <h1 className="month">
+        {schedule.monthLabel}
+        <span className="month__who"> · {me}</span>
+      </h1>
+
+      <section className="cal" aria-label="Kalender">
+        {WEEK_HEADS.map((d, i) => (
+          <span key={i} className="cal__head" aria-hidden="true">
+            {d}
+          </span>
+        ))}
+
+        {Array.from({ length: lead }, (_, i) => (
+          <span key={`pad${i}`} className="cal__pad" />
+        ))}
+
+        {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
+          const dayShifts = byDay.get(day) ?? [];
+          const wd = weekdayOf(day);
+          const isWorkday = workdays.has(day);
+          // Trips to work that day — a continuation is not one of them.
+          const trips = dayShifts.filter((s) => !isContinuation(s, shifts));
+
+          if (dayShifts.length === 0) {
+            return (
+              <span key={day} className="cal__day">
+                <span className="cal__num">{day}</span>
+              </span>
+            );
+          }
+
+          // Jour only: on call, but at home. Neither a day you travel in nor a
+          // day off, so it takes its own paler fill rather than being lumped
+          // in with either.
+          const allStandby = dayShifts.every((s) => s.standby);
+
+          // Only finishing last night's shift: not a day you travel in, so it
+          // must not look like the filled workdays around it.
+          if (!isWorkday) {
+            const carriesIn = dayShifts.some((s) => isContinuation(s, shifts));
+            return (
+              <button
+                key={day}
+                type="button"
+                className={`cal__day ${
+                  allStandby ? 'cal__day--jour' : 'cal__day--tail'
+                }`}
+                aria-label={`${day} ${WEEK_LONG[wd]}, ${
+                  allStandby
+                    ? 'nattjour — beredskap hemifrån'
+                    : 'ledig — nattpasset från dagen innan slutar denna morgon'
+                }`}
+                onClick={() => setOpenDay(day)}
+              >
+                <span className="cal__num">{day}</span>
+                {/* Points back at the day it came from, so it sits on the side
+                    the night arrived from — the left of the number. */}
+                {carriesIn && (
+                  <span className="cal__arrow cal__arrow--in" aria-hidden="true">
+                    <ArrowLeftIcon />
+                  </span>
+                )}
+                {allStandby && (
+                  <span className="cal__moon cal__moon--jour" aria-hidden="true">
+                    <MoonIcon />
+                  </span>
+                )}
+              </button>
+            );
+          }
+
+          // A shift running past midnight: this cell points right, tomorrow's
+          // tail cell points left, so the pair reads as one stretch. Note this
+          // is the only kind of night the parser can express — it splits at
+          // midnight into an evening ending 24:00 plus a 00:00 tail, so
+          // `endsNextDay` is never set and bandOf() never returns 'night'
+          // here. continuesTomorrow() is what identifies the pair.
+          const spillsOver = dayShifts.some((s) => continuesTomorrow(s, shifts));
+
+          // ...but only an awake one is a nattpass. AH works to 22:00 on the
+          // 3rd and is on call after: the day crosses midnight without anyone
+          // being at work for it, so it must not take the night fill or the
+          // solid moon. Colour follows what you actually did, not the clock.
+          const worksThroughNight = dayShifts.some(
+            (s) => !s.standby && continuesTomorrow(s, shifts)
+          );
+          const jourAfter = dayShifts.some(
+            (s) => s.standby && continuesTomorrow(s, shifts)
+          );
+
+          return (
+            <button
+              key={day}
+              type="button"
+              className={`cal__day cal__day--on ${
+                worksThroughNight ? 'cal__day--night' : ''
+              } ${spillsOver ? 'cal__day--spills' : ''}`}
+              aria-label={`${day} ${WEEK_LONG[wd]}, arbetsdag${
+                trips.length > 1 ? `, ${trips.length} pass` : ''
+              }${
+                worksThroughNight
+                  ? ', nattpass som fortsätter till nästa dag'
+                  : jourAfter
+                    ? ', därefter jour till nästa dag'
+                    : ''
+              }`}
+              onClick={() => setOpenDay(day)}
+            >
+              <span className="cal__num">{day}</span>
+              {/* Moon in the top corner labels the day; the arrow leaves from
+                  the bottom right, the side it carries into tomorrow. The
+                  count of trips is no longer drawn — it stays in the label
+                  below, and the list spells it out in full. */}
+              {spillsOver && (
+                <>
+                  {/* On a jour-after day the moon marks that the night is
+                      covered, not worked, so it takes the jour ink. */}
+                  <span
+                    className={`cal__moon ${
+                      worksThroughNight ? '' : 'cal__moon--onjour'
+                    }`}
+                    aria-hidden="true"
+                  >
+                    <MoonIcon />
+                  </span>
+                  <span className="cal__arrow cal__arrow--out" aria-hidden="true">
+                    <ArrowRightIcon />
+                  </span>
+                </>
+              )}
+            </button>
+          );
+        })}
+      </section>
+
+      {/* Names the two fills the calendar and the list share. */}
+      <ul className="key" aria-label="Färgförklaring">
+        <li className="key__item">
+          <span className="key__swatch" aria-hidden="true" />
+          dagpass
+        </li>
+        <li className="key__item">
+          <span className="key__swatch key__swatch--night" aria-hidden="true" />
+          nattpass
+        </li>
+        <li className="key__item">
+          <span className="key__swatch key__swatch--jour" aria-hidden="true" />
+          nattjour
+        </li>
+      </ul>
+
+      {/* Every shift, in order. The calendar is the overview; this is the
+          record — nothing here is hidden behind an interaction. */}
+      <section className="list" aria-label="Dina pass">
+        {shifts.length === 0 && (
+          <p className="empty">Du har inga pass den här månaden.</p>
+        )}
+        {/* Grouped by day: the date is printed once, however many times you go
+            in. Two rows both labelled "11 tis" read as a mistake rather than
+            as two trips. */}
+        {[...byDay.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([day, dayShifts]) => {
+            const allTail = dayShifts.every((s) => isContinuation(s, shifts));
+            // A day of nothing but jour is neither worked nor free, so it gets
+            // its own row colour rather than borrowing one of theirs.
+            const allJour = dayShifts.every((s) => s.standby);
+            // Only an awake shift crossing midnight makes this a night row —
+            // a day worked to 22:00 and then covered by jour is not one, even
+            // though the jour block does run past midnight.
+            const spills = dayShifts.some(
+              (s) => !s.standby && continuesTomorrow(s, shifts)
+            );
+            return (
+              <div
+                key={day}
+                className={`pass ${allJour ? 'pass--jour' : ''} ${
+                  allTail && !allJour ? 'pass--tail' : ''
+                } ${spills && !allJour ? 'pass--spills' : ''}`}
+              >
+                <span className="pass__date">
+                  <span className="pass__num">{day}</span>
+                  <span className="pass__wd">
+                    {dayShifts[0].weekday.slice(0, 3)}
+                  </span>
+                </span>
+
+                <span className="pass__shifts">
+                  {dayShifts.map((s, k) => (
+                    <span key={k} className="pass__row">
+                      <span className="pass__time">
+                        {s.start} – {s.end}
+                        {/* The same moon the calendar puts on this day, so the
+                            two views name a night the same way. */}
+                        {continuesTomorrow(s, shifts) && (
+                          <span
+                            className={`pass__moon ${
+                              s.standby ? 'pass__moon--jour' : ''
+                            }`}
+                            aria-label={s.standby ? 'jour' : 'nattpass'}
+                          >
+                            <MoonIcon />
+                          </span>
+                        )}
+                        {/* Jour is an obligation, not hours on the floor, so it
+                            says so beside the time rather than only in totals. */}
+                        {s.standby && <span className="pass__tail">jour</span>}
+                        {/* Say plainly that this is last night finishing, not
+                            a new morning you travel in for. */}
+                        {isContinuation(s, shifts) && !s.standby && (
+                          <span className="pass__tail">forts. från natten</span>
+                        )}
+                      </span>
+                      <span className="pass__hours">
+                        {formatHours(s.hours)} h
+                      </span>
+                    </span>
+                  ))}
+                </span>
+              </div>
+            );
+          })}
+      </section>
+
+      {/* Keyed by day so switching cells remounts rather than reusing a dialog
+          whose showModal() effect has already run. */}
+      {openDay !== null && (
+        <DayDialog
+          key={openDay}
+          day={openDay}
+          dayShifts={byDay.get(openDay) ?? []}
+          allShifts={shifts}
+          weekdayLong={WEEK_LONG[weekdayOf(openDay)]}
+          monthLabel={schedule.monthLabel}
+          schedule={schedule}
+          me={me}
+          onClose={() => setOpenDay(null)}
+        />
+      )}
+
+      <footer className="foot">
+        <span className="foot__note">
+          <LockIcon /> Schemat lästes i din telefon — inget laddades upp.
+        </span>
+        <button className="foot__forget" onClick={onForget}>
+          Glöm mig
+        </button>
+      </footer>
+    </main>
+  );
+}
+
+
+/* ------------------------------------------------------------------- icons */
+
+const DocIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M14 3v5h5" strokeLinecap="round" strokeLinejoin="round" />
+    <path
+      d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+/* Night-shift arrows. The two halves point at each other across the date
+   boundary: the evening cell points right, the next morning points left.
+   Drawn wide and short so they read as direction, not glyphs, at ~10px. */
+
+const arrow = {
+  viewBox: '0 0 12 4',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.2,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+} as const;
+
+/** Runs off the right edge: this shift continues into tomorrow. */
+const ArrowRightIcon = () => (
+  <svg {...arrow}>
+    <path d="M0 2h10M8 0.6 9.8 2 8 3.4" />
+  </svg>
+);
+
+/** Points back left: this shift arrived from yesterday. */
+const ArrowLeftIcon = () => (
+  <svg {...arrow}>
+    <path d="M12 2H2M4 0.6 2.2 2 4 3.4" />
+  </svg>
+);
+
+/* A night you go in for. Filled rather than stroked: at ~9px a 1.2-weight
+   outline crescent closes up into a smudge, while a solid shape keeps its
+   horns. Drawn as one path so it stays crisp against the filled cell. */
+const MoonIcon = () => (
+  <svg viewBox="0 0 12 12" fill="currentColor">
+    <path d="M10.2 7.7A4.6 4.6 0 0 1 4.3 1.8a4.6 4.6 0 1 0 5.9 5.9Z" />
+  </svg>
+);
+
+const CloseIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    width="18"
+    height="18"
+  >
+    <path d="M6 6l12 12M18 6L6 18" />
+  </svg>
+);
+
+const LockIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.6"
+    width="14"
+    height="14"
+  >
+    <rect x="4" y="10" width="16" height="11" rx="2" />
+    <path d="M8 10V7a4 4 0 0 1 8 0v3" strokeLinecap="round" />
+  </svg>
+);
+
+const Spinner = () => <span className="spinner" />;
