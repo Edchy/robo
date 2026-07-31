@@ -46,21 +46,34 @@ test('excludes AU from the staff list', { skip: !available }, async () => {
   ]);
 });
 
-test('ES totals 178 h across 22 shifts', { skip: !available }, async () => {
+test('ES totals 178 h, split across work and sleep rows', { skip: !available }, async () => {
   const s = await load();
   const shifts = shiftsFor(s, 'ES');
   assert.equal(shifts.reduce((a, x) => a + x.hours, 0), 178);
-  // 22, not 18: nights are two rows in the PDF and stay two rows here.
-  assert.equal(shifts.length, 22);
+  // 34, not 22: sleeping at the workplace is its own rate, so the 23:30
+  // handover into bed and the 00:00–06:30 sleep are their own rows rather
+  // than being folded into the evening and morning around them.
+  assert.equal(shifts.length, 34);
+
+  // The hours are only redistributed, never invented or lost.
+  const { worked, sleep, jour } = splitHours(shifts);
+  assert.equal(worked + sleep + jour, 178);
+  assert.equal(jour, 0, 'ES is never on call from home');
+  assert.equal(sleep, 42);
 });
 
-test('merges adjacent blocks into one shift', { skip: !available }, async () => {
+test('merges adjacent blocks of the same kind', { skip: !available }, async () => {
   const s = await load();
   // Aug 1 is three cells in the PDF (09:00–18:00, 18:00–23:30, 23:30–24:00).
-  const first = shiftsFor(s, 'ES')[0];
+  // The first two merge; the third is the handover into bed and stays apart.
+  const day1 = shiftsFor(s, 'ES').filter((x) => x.dayNum === 1);
   assert.deepEqual(
-    { start: first.start, end: first.end, hours: first.hours },
-    { start: '09:00', end: '24:00', hours: 15 }
+    { start: day1[0].start, end: day1[0].end, hours: day1[0].hours, kind: day1[0].kind },
+    { start: '09:00', end: '23:30', hours: 14.5, kind: 'work' }
+  );
+  assert.deepEqual(
+    { start: day1[1].start, end: day1[1].end, hours: day1[1].hours, kind: day1[1].kind },
+    { start: '23:30', end: '24:00', hours: 0.5, kind: 'sleep' }
   );
 });
 
@@ -68,15 +81,21 @@ test('never stitches a shift across midnight', { skip: !available }, async () =>
   const s = await load();
   const shifts = shiftsFor(s, 'ES');
   // Every night is two rows in the PDF and stays two rows here, whatever hour
-  // it began — so a morning-start (Aug 1) and an evening-start (Aug 3) split
-  // the same way. Nothing may run past midnight.
+  // it began. Nothing may run past midnight.
   assert.equal(shifts.every((x) => !x.endsNextDay), true);
 
-  const at = (day: number) => shifts.find((x) => x.dayNum === day)!;
-  assert.deepEqual({ start: at(1).start, end: at(1).end }, { start: '09:00', end: '24:00' });
-  assert.deepEqual({ start: at(2).start, end: at(2).end }, { start: '00:00', end: '09:00' });
-  assert.deepEqual({ start: at(3).start, end: at(3).end }, { start: '16:00', end: '24:00' });
-  assert.deepEqual({ start: at(4).start, end: at(4).end }, { start: '00:00', end: '08:00' });
+  // Aug 1 ends at midnight and Aug 2 picks up at 00:00 — the night is written
+  // as two halves either side of the boundary, never as one row.
+  const on = (day: number) => shifts.filter((x) => x.dayNum === day);
+  assert.equal(on(1).at(-1)!.end, '24:00');
+  assert.equal(on(2)[0].start, '00:00');
+  assert.equal(on(3).at(-1)!.end, '24:00');
+  assert.equal(on(4)[0].start, '00:00');
+
+  // The morning after sleeping over: awake at 06:30, still in the building.
+  assert.equal(on(2)[0].kind, 'sleep');
+  assert.equal(on(2)[1].kind, 'work');
+  assert.equal(on(2)[1].start, '06:30');
 });
 
 test('ES works 14 days, six of which only finish a night', { skip: !available }, async () => {
@@ -113,7 +132,9 @@ test('jour is the night half of line 1, not the whole line', { skip: !available 
   // on the 8th, on the same line KA's jour sits on.
   const es = shiftsFor(s, 'ES');
   assert.equal(es.find((x) => x.dayNum === 8)!.standby, false);
-  assert.equal(splitHours(es).standby, 0, 'ES never holds jour');
+  // Jour specifically — ES does sleep at the workplace, which is also
+  // `standby` but is a different state and a different rate.
+  assert.equal(splitHours(es).jour, 0, 'ES never holds jour');
 
   // A morning block on line 1 is only a jour tail if a jour night preceded it.
   // ES's lone 07:00–08:00 on the 10th follows nothing, so it is a trip in.

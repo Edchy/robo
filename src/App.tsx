@@ -283,7 +283,7 @@ function DayDialog({
     if (!el.open) el.showModal();
   }, []);
 
-  const { worked, standby } = splitHours(dayShifts);
+  const { worked, sleep, jour } = splitHours(dayShifts);
   const trips = dayShifts.filter(
     (s) => !s.standby && !isContinuation(s, allShifts)
   );
@@ -353,7 +353,11 @@ function DayDialog({
                   </span>
                   <span className="sheet__hours">
                     {formatHours(s.hours)} h
-                    {s.standby && <span className="sheet__tag">jour</span>}
+                    {s.standby && (
+                      <span className="sheet__tag">
+                        {s.kind === 'sleep' ? 'sömn' : 'jour'}
+                      </span>
+                    )}
                   </span>
                 </div>
 
@@ -370,9 +374,14 @@ function DayDialog({
                   </div>
                 )}
 
-                {s.standby && (
+                {s.kind === 'jour' && (
                   <p className="sheet__note">
                     Beredskap hemifrån — inte arbetad tid.
+                  </p>
+                )}
+                {s.kind === 'sleep' && (
+                  <p className="sheet__note">
+                    Sovande jour på plats — egen ersättning.
                   </p>
                 )}
                 {tail && !s.standby && (
@@ -395,10 +404,16 @@ function DayDialog({
             <dt>Arbete</dt>
             <dd>{formatHours(worked)} h</dd>
           </div>
-          {standby > 0 && (
+          {sleep > 0 && (
+            <div className="sheet__fact">
+              <dt>Sömn</dt>
+              <dd>{formatHours(sleep)} h</dd>
+            </div>
+          )}
+          {jour > 0 && (
             <div className="sheet__fact">
               <dt>Jour</dt>
-              <dd>{formatHours(standby)} h</dd>
+              <dd>{formatHours(jour)} h</dd>
             </div>
           )}
           <div className="sheet__fact">
@@ -446,6 +461,9 @@ function MonthView({
 
   // Days the person actually travels in — the calendar's whole point.
   const workdays = useMemo(() => workdaysOf(shifts), [shifts]);
+
+  // The month's three paid states, each at its own rate.
+  const totals = useMemo(() => splitHours(shifts), [shifts]);
 
   const daysInMonth = schedule.days.length;
 
@@ -504,6 +522,30 @@ function MonthView({
         {schedule.monthLabel}
         <span className="month__who"> · {me}</span>
       </h1>
+
+      {/* The month at three rates. Never summed into one figure: an hour awake
+          on the floor, an hour asleep here and an hour on call at home are paid
+          differently, so a single total would answer no question anyone has.
+          Zero rows are dropped rather than shown as "0 h" — most people hold
+          only one or two of the three. */}
+      <dl className="tot">
+        <div className="tot__item">
+          <dt className="tot__label">Arbete</dt>
+          <dd className="tot__val">{formatHours(totals.worked)} h</dd>
+        </div>
+        {totals.sleep > 0 && (
+          <div className="tot__item tot__item--sleep">
+            <dt className="tot__label">Sömn</dt>
+            <dd className="tot__val">{formatHours(totals.sleep)} h</dd>
+          </div>
+        )}
+        {totals.jour > 0 && (
+          <div className="tot__item tot__item--jour">
+            <dt className="tot__label">Jour</dt>
+            <dd className="tot__val">{formatHours(totals.jour)} h</dd>
+          </div>
+        )}
+      </dl>
 
       <section className="cal" aria-label="Kalender">
         {WEEK_HEADS.map((d, i) => (
@@ -719,7 +761,11 @@ function MonthView({
                         )}
                         {/* Jour is an obligation, not hours on the floor, so it
                             says so beside the time rather than only in totals. */}
-                        {s.standby && <span className="pass__tail">jour</span>}
+                        {s.standby && (
+                          <span className="pass__tail">
+                            {s.kind === 'sleep' ? 'sömn' : 'jour'}
+                          </span>
+                        )}
                         {/* Say plainly that this is last night finishing, not
                             a new morning you travel in for. */}
                         {isContinuation(s, shifts) && !s.standby && (

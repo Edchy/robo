@@ -249,6 +249,48 @@ body {
 
 .month__who { display: none; }
 
+/* ------------------------------------------------------------------ totals */
+
+/* The month at its three rates, sitting between the header and the calendar.
+   Read left to right in descending rate: work, sleep, jour. */
+.tot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0 0 1.25rem;
+}
+
+.tot__item {
+  flex: 1 1 0;
+  min-width: 5.5rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--band-day);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+
+/* Each figure takes the ink of the thing it counts, matching the calendar
+   below — so "Sömn" here and a night cell there are visibly the same subject. */
+.tot__item--sleep { border-left-color: var(--band-night); }
+.tot__item--jour { border-left-color: var(--band-jour-line); }
+
+.tot__label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.tot__val {
+  margin: 0.0625rem 0 0;
+  font-size: 1.0625rem;
+  font-weight: 640;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------------------------------------------------------------- calendar */
 
 /* An overview, not the main event: small cells, but the block spans the

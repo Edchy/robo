@@ -58,9 +58,27 @@ export type Shift = {
   /**
    * Jour — on call from home rather than awake on the floor. Real obligation,
    * but not time spent working, so it is never added into worked hours.
+   *
+   * True for both 'jour' and 'sleep': neither is time awake on the floor.
+   * Kept alongside `kind` because schedules cached before `kind` existed still
+   * carry it, and because "not worked hours" is the question most callers ask.
    */
   standby: boolean;
+  /**
+   * Which of the three paid states this is. The distinction is not in the PDF —
+   * it comes from which line the block sits on. See `kindOfBlock`.
+   */
+  kind: ShiftKind;
 };
+
+/**
+ * The three states a scheduled hour can be in, each paid differently:
+ *
+ *   work   awake on the floor, ordinary rate
+ *   sleep  asleep at the workplace, reduced rate
+ *   jour   on call from home, lowest rate
+ */
+export type ShiftKind = 'work' | 'sleep' | 'jour';
 
 /**
  * The evening handover into jour. A block running from here to midnight is
@@ -72,6 +90,21 @@ const STANDBY_EVENING_FROM = 21 * 60;
 
 /** Jour is handed back over the morning; past this, line 1 is ordinary work. */
 const STANDBY_MORNING_UNTIL = 9 * 60;
+
+/**
+ * When the person staffing the night goes to bed. Line 0's evening always runs
+ * to 23:30 and then takes a separate 23:30–24:00 block: that last half hour is
+ * the handover into sleeping at the workplace, not awake work. Holds on 31 of
+ * 31 days in August 2026 — every line-0 block ending 24:00 starts at 23:30.
+ */
+const SLEEP_FROM = 23 * 60 + 30;
+
+/**
+ * The sleeper is up again at 06:30 — line 0's post-midnight block runs 00:00 to
+ * exactly 06:30 on all 31 days, and any block after that is the morning shift
+ * proper. Anything ending at or before this on line 0 is therefore still night.
+ */
+const SLEEP_UNTIL = 6 * 60 + 30;
 
 /**
  * Whether a block is jour — on call from home rather than awake on the floor.
@@ -107,6 +140,45 @@ const isStandbyBlock = (
 };
 
 /**
+ * Which paid state a block is in.
+ *
+ * The PDF does not say — it carries only initials, times and hours, and a night
+ * slept at the workplace looks exactly like a night covered from home. The
+ * distinction is in the layout: the two staff covering a night sit on fixed
+ * lines, the sleeper above the jour.
+ *
+ *   line 0 — the person who stays the night at the workplace. Awake until
+ *            23:30, asleep 23:30–06:30, awake again for the morning.
+ *   line 1 — the person on call from home, from 21:00/22:00 until 07:00–09:00.
+ *
+ * So sleep is line 0 within the night window, jour is line 1 across it, and
+ * everything else on either line is ordinary work. `startedNight` answers
+ * whether a morning block continues a night that actually happened — only the
+ * caller can see the previous day.
+ */
+const kindOfBlock = (
+  lineIndex: number,
+  block: Block,
+  startedNight: boolean,
+  startedSleep: boolean
+): ShiftKind => {
+  if (isStandbyBlock(lineIndex, block, startedNight)) return 'jour';
+
+  if (lineIndex === 0) {
+    const start = toMin(block.start);
+    const end = toMin(block.end);
+    // The evening handover into bed: 23:30 to midnight.
+    if (start >= SLEEP_FROM) return 'sleep';
+    // ...and its other half after midnight, but only when the evening before
+    // actually went to bed. A 00:00 block with no sleep behind it is a night
+    // worked awake, which is ordinary work.
+    if (end <= SLEEP_UNTIL && startedSleep) return 'sleep';
+  }
+
+  return 'work';
+};
+
+/**
  * True when this shift is the tail of the previous day's night rather than a
  * fresh trip to work: it starts at midnight and the day before ran to 24:00.
  *
@@ -114,9 +186,27 @@ const isStandbyBlock = (
  * but "do I have to get up and travel in". Finishing a night you already
  * started is not a workday; a one-hour morning shift very much is.
  */
-export const isContinuation = (shift: Shift, all: readonly Shift[]): boolean =>
-  shift.start === '00:00' &&
-  all.some((p) => p.dayNum === shift.dayNum - 1 && p.end === '24:00');
+export const isContinuation = (shift: Shift, all: readonly Shift[]): boolean => {
+  const cameFromLastNight = all.some(
+    (p) => p.dayNum === shift.dayNum - 1 && p.end === '24:00'
+  );
+  if (shift.start === '00:00') return cameFromLastNight;
+
+  // The morning after sleeping at the workplace. The sleeper wakes at 06:30 and
+  // works on, which the PDF writes as a separate block — but they were already
+  // in the building, so it is the end of that night rather than a trip in.
+  // Without this, every night slept over would count as two workdays.
+  return (
+    cameFromLastNight &&
+    all.some(
+      (p) =>
+        p.dayNum === shift.dayNum &&
+        p.kind === 'sleep' &&
+        p.start === '00:00' &&
+        p.end === shift.start
+    )
+  );
+};
 
 /**
  * True when this shift runs to midnight and is picked up again at 00:00 the
@@ -230,14 +320,21 @@ export const alongsideOn = (
  */
 export const splitHours = (
   shifts: readonly Shift[]
-): { worked: number; standby: number } => {
+): { worked: number; standby: number; sleep: number; jour: number } => {
   let worked = 0;
-  let standby = 0;
+  let sleep = 0;
+  let jour = 0;
   for (const s of shifts) {
-    if (s.standby) standby += s.hours;
+    // `kind` is absent on schedules cached before it existed; fall back to the
+    // old boolean, which lumped sleep in with work exactly as it used to.
+    const kind = s.kind ?? (s.standby ? 'jour' : 'work');
+    if (kind === 'jour') jour += s.hours;
+    else if (kind === 'sleep') sleep += s.hours;
     else worked += s.hours;
   }
-  return { worked, standby };
+  // `standby` keeps its old meaning — everything that is not awake work — so
+  // callers written against the two-way split still read correctly.
+  return { worked, standby: sleep + jour, sleep, jour };
 };
 
 /** Swedish label for a band, shown next to the colour so it never stands alone. */
@@ -399,35 +496,44 @@ export function shiftsFor(schedule: Schedule, code: string): Shift[] {
     endMin: number;
     shared: Set<string>;
     standby: boolean;
+    kind: ShiftKind;
   };
   const spans: Span[] = [];
 
   // True when this person held jour into midnight on the day just processed,
   // which is what makes the next morning's block a tail rather than a trip in.
   let carriedJour = false;
+  // The same question for the sleeper: did they go to bed here last night?
+  let carriedSleep = false;
 
   for (const day of schedule.days) {
-    const mine: (Block & { standby: boolean })[] = [];
+    const mine: (Block & { kind: ShiftKind })[] = [];
     day.lines.forEach((line, lineIndex) => {
       for (const b of line.blocks)
         if (b.codes.includes(code))
-          mine.push({ ...b, standby: isStandbyBlock(lineIndex, b, carriedJour) });
+          mine.push({
+            ...b,
+            kind: kindOfBlock(lineIndex, b, carriedJour, carriedSleep),
+          });
     });
-    carriedJour = mine.some((b) => b.standby && b.end === '24:00');
+    carriedJour = mine.some((b) => b.kind === 'jour' && b.end === '24:00');
+    carriedSleep = mine.some((b) => b.kind === 'sleep' && b.end === '24:00');
     if (!mine.length) continue;
 
     mine.sort((a, b) => toMin(a.start) - toMin(b.start));
     for (const b of mine) {
       const others = b.codes.filter((c) => c !== code);
       const last = spans[spans.length - 1];
-      // Only merge blocks of the same kind: an awake hour and a standby hour
-      // are different work even when they touch, and folding them into one
-      // span would hide the difference the whole distinction rests on.
+      // Only merge blocks of the same kind: an awake hour, a slept hour and an
+      // on-call hour are different work even when they touch, and folding them
+      // into one span would hide the difference the whole distinction rests on.
+      // Compared on `kind` rather than `standby`, or the 23:30 handover into
+      // bed would fuse with the evening it follows — both are standby:false.
       if (
         last &&
         last.date === day.date &&
         last.endMin === toMin(b.start) &&
-        last.standby === b.standby
+        last.kind === b.kind
       ) {
         last.endMin = toMin(b.end);
         others.forEach((o) => last.shared.add(o));
@@ -437,7 +543,8 @@ export function shiftsFor(schedule: Schedule, code: string): Shift[] {
           startMin: toMin(b.start),
           endMin: toMin(b.end),
           shared: new Set(others),
-          standby: b.standby,
+          standby: b.kind !== 'work',
+          kind: b.kind,
         });
       }
     }
@@ -462,6 +569,7 @@ export function shiftsFor(schedule: Schedule, code: string): Shift[] {
       hours: (s.endMin - s.startMin) / 60,
       sharedWith: [...s.shared].sort(),
       standby: s.standby,
+      kind: s.kind,
     };
   });
 }
