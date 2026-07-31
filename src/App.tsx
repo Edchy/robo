@@ -333,9 +333,13 @@ function DayDialog({
             return (
               <li
                 key={k}
-                className={`sheet__shift ${
-                  s.standby ? 'sheet__shift--jour' : ''
-                } ${night && !s.standby ? 'sheet__shift--night' : ''}`}
+                /* One class per state, so each block is filled with the thing
+                   it is rather than all three sharing one grey. A worked block
+                   that runs through the night takes the deeper night fill, the
+                   same step the calendar makes. */
+                className={`sheet__shift sheet__shift--${s.kind} ${
+                  night && s.kind === 'work' ? 'sheet__shift--night' : ''
+                }`}
               >
                 <div className="sheet__row">
                   <span className="sheet__time">
@@ -740,17 +744,14 @@ function MonthView({
             const spills = dayShifts.some(
               (s) => !s.standby && continuesTomorrow(s, shifts)
             );
-            // Any jour at all stripes the row, over whatever fill it has — the
-            // same rule as the calendar cell, so a row and its square match.
-            const hasJour = dayShifts.some((s) => s.kind === 'jour');
             return (
               <div
                 key={day}
                 className={`pass ${allJour ? 'pass--jour' : ''} ${
                   allTail && !allJour ? 'pass--tail' : ''
                 } ${spills && !allJour ? 'pass--spills' : ''} ${
-                  hasJour ? 'pass--hasjour' : ''
-                } ${day === today ? 'pass--today' : ''}`}
+                  day === today ? 'pass--today' : ''
+                }`}
                 aria-current={day === today ? 'date' : undefined}
               >
                 <span className="pass__date">
@@ -762,7 +763,11 @@ function MonthView({
 
                 <span className="pass__shifts">
                   {dayShifts.map((s, k) => (
-                    <span key={k} className="pass__row">
+                    /* A day can hold all three states at once — jour to the
+                       morning, the day's work, then sleeping here at 23:30 —
+                       so each row is tinted with its own, rather than the whole
+                       card taking one colour for the lot. */
+                    <span key={k} className={`pass__row pass__row--${s.kind}`}>
                       <span className="pass__time">
                         {s.start} – {s.end}
                         {/* The same moon the calendar puts on this day, so the

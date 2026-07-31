@@ -665,19 +665,46 @@ button.cal__day:focus-visible { z-index: 1; }
    the calendar no longer draws now has room to be stated in full. The left
    edge carries the same colour the calendar cell does, so a shift is
    recognisable across the two views. */
+/* Each block is tinted with the state it represents, so the three read apart
+   at a glance instead of sharing one grey and differing only in a stripe. A
+   wash rather than the solid fill the calendar uses: these blocks carry three
+   lines of dark text, which a full-strength band could not hold. */
 .sheet__shift {
   display: flex;
   flex-direction: column;
   gap: 0.4375rem;
   padding: 0.75rem 0.875rem;
   border-radius: var(--r-sm);
-  background: var(--sunk);
+  background: color-mix(in oklab, var(--band-day) 10%, var(--surface));
   border-left: 3px solid var(--band-day);
 }
 
-.sheet__shift--night { border-left-color: var(--band-night); }
+/* Awake through the night: the deeper of the two shift colours, as on the
+   calendar, so a night block and a night cell are the same subject. */
+.sheet__shift--night {
+  background: color-mix(in oklab, var(--band-night) 11%, var(--surface));
+  border-left-color: var(--band-night);
+}
 
+/* Asleep at the workplace. Between work and jour in both meaning and weight:
+   the night hue, but lighter than a worked night and without the hatch that
+   marks being on call from home. */
+.sheet__shift--sleep {
+  background: color-mix(in oklab, var(--band-night) 7%, var(--surface));
+  border-left-color: var(--band-night);
+  border-left-style: dotted;
+}
+
+/* On call from home. The same pale fill and hatch as the calendar's jour, so
+   the two views name it identically. Dashed edge: nothing here was worked. */
 .sheet__shift--jour {
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0 5px,
+      color-mix(in oklab, var(--band-jour-line) 55%, transparent) 5px 6px
+    ),
+    color-mix(in oklab, var(--band-jour) 55%, var(--surface));
   border-left-color: var(--band-jour-line);
   border-left-style: dashed;
 }
@@ -829,43 +856,21 @@ button.cal__day:focus-visible { z-index: 1; }
 /* Nights take the deeper fill, the same step the calendar makes. */
 .pass--spills { background: var(--band-night); }
 
-/* Any jour in the day hatches the row, over whatever fill it has — the same
-   rule and the same angle as the calendar cell, so a row and its square are
-   visibly the same day. A striped night row is a night shift that also carries
-   jour, which is a real combination rather than two competing labels. */
-.pass--hasjour::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: repeating-linear-gradient(
-    -45deg,
-    transparent 0 5px,
-    oklch(100% 0 0 / 0.22) 5px 6px
-  );
-  pointer-events: none;
-}
+/* The card no longer hatches as a whole. It used to, when jour was a fact
+   about the day — but the rows inside now each carry their own state, and a
+   hatch across all of them drowned the one row that was actually jour. The
+   calendar cell still hatches, because a cell has no rows to say it with. */
 
-/* The pale rows carry dark ink, so white stripes would vanish into them. */
-.pass--jour.pass--hasjour::before,
-.pass--tail.pass--hasjour::before {
-  background: repeating-linear-gradient(
-    -45deg,
-    transparent 0 5px,
-    var(--band-jour-line) 5px 6px
-  );
-}
-
-/* Above the hatch, so the times stay crisp. */
+/* Above any row tint, so the times stay crisp. */
 .pass__date,
 .pass__shifts,
 .pass__today { position: relative; z-index: 1; }
 
 /* Jour rows carry the same hatch as the calendar cell, and dark ink like the
    continuation row — the two pale row types behave alike. */
-/* A day of nothing but jour: the pale jour fill, flat. The stripes come from
-   .pass--hasjour, which every jour row carries — so a jour-only row and a
-   worked row with jour are hatched by one rule, and only the fill differs. */
+/* A day of nothing but jour: the pale jour fill. The hatch comes from the rows
+   inside, each of which carries its own state, so this only has to say what
+   kind of day it was. */
 .pass--jour {
   background: var(--band-jour);
   color: var(--band-jour-ink);
@@ -932,7 +937,46 @@ button.cal__day:focus-visible { z-index: 1; }
   display: flex;
   align-items: baseline;
   gap: 0.875rem;
+  padding: 0.1875rem 0.4375rem;
+  margin: -0.1875rem -0.4375rem;
+  border-radius: 4px;
 }
+
+/* Each state tints its own row, so a day holding jour, work and sömn shows all
+   three rather than one colour for the lot. Laid over the card's fill as a
+   translucent shade or hatch, which keeps one rule working on the day fill,
+   the night fill and the pale rows alike.
+
+   Work is left untinted: it is the default and by far the most common, so
+   tinting it too would turn every row into a band and the exceptions would
+   stop standing out. */
+
+/* Asleep here: a solid shade, no hatch. Darker than the fill it sits on, the
+   same direction the calendar's night takes from its day. */
+.pass__row--sleep { background: oklch(0% 0 0 / 0.22); }
+
+/* On call from home: hatched, the one mark that means jour throughout. */
+.pass__row--jour {
+  background: repeating-linear-gradient(
+    -45deg,
+    oklch(0% 0 0 / 0.16) 0 4px,
+    oklch(100% 0 0 / 0.16) 4px 6px
+  );
+}
+
+/* The pale rows carry dark ink, so a light hatch would vanish into them —
+   there both marks darken instead. */
+.pass--jour .pass__row--jour,
+.pass--tail .pass__row--jour {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 4px,
+    color-mix(in oklab, var(--band-jour-line) 85%, transparent) 4px 6px
+  );
+}
+
+.pass--jour .pass__row--sleep,
+.pass--tail .pass__row--sleep { background: oklch(0% 0 0 / 0.09); }
 
 /* A night and its morning are one shift split across two rows. The gap between
    blocks would read as a separation, so the pair closes up and the corners
