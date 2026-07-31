@@ -5,6 +5,7 @@ import {
   shiftsFor,
   isContinuation,
   continuesTomorrow,
+  isNightShift,
   personHues,
   workdaysOf,
   splitHours,
@@ -326,7 +327,6 @@ function DayDialog({
         <ul className="sheet__list">
           {dayShifts.map((s, k) => {
             const tail = isContinuation(s, allShifts);
-            const night = continuesTomorrow(s, allShifts);
             // Who is on the floor at the same time — the person you actually
             // work beside, which is not the same as sharing a written cell.
             const alongside = alongsideOn(schedule, s, me);
@@ -338,16 +338,16 @@ function DayDialog({
                    that runs through the night takes the deeper night fill, the
                    same step the calendar makes. */
                 className={`sheet__shift sheet__shift--${s.kind} ${
-                  night && s.kind === 'work' ? 'sheet__shift--night' : ''
+                  isNightShift(s) ? 'sheet__shift--night' : ''
                 }`}
               >
                 <div className="sheet__row">
                   <span className="sheet__time">
                     {s.start} – {s.end}
-                    {/* Only on awake nights — jour and sömn are overnight by
-                        definition, and the tag beside the hours already says
-                        which. Same rule as the list. */}
-                    {night && !s.standby && (
+                    {/* Marks the night shift itself. Not jour or sömn: both
+                        are overnight by definition and say so in the tag
+                        beside the hours. Same rule as the list. */}
+                    {isNightShift(s) && (
                       <span className="sheet__moon" aria-hidden="true">
                         <MoonIcon />
                       </span>
@@ -391,8 +391,11 @@ function DayDialog({
                     Forts. från natten innan — du är redan på plats.
                   </p>
                 )}
-                {night && !s.standby && (
-                  <p className="sheet__note">Fortsätter in i nästa dygn.</p>
+                {/* The night shift hands over to that person's own sömn at
+                    23:30, so it does not continue into the next day the way a
+                    shift running past midnight would. */}
+                {isNightShift(s) && (
+                  <p className="sheet__note">Nattpass — du sover här efteråt.</p>
                 )}
               </li>
             );
@@ -638,13 +641,10 @@ function MonthView({
           // here. continuesTomorrow() is what identifies the pair.
           const spillsOver = dayShifts.some((s) => continuesTomorrow(s, shifts));
 
-          // ...but only an awake one is a nattpass. AH works to 22:00 on the
-          // 3rd and is on call after: the day crosses midnight without anyone
-          // being at work for it, so it must not take the night fill or the
-          // solid moon. Colour follows what you actually did, not the clock.
-          const worksThroughNight = dayShifts.some(
-            (s) => !s.standby && continuesTomorrow(s, shifts)
-          );
+          // The night shift: an awake evening ending 23:30, after which that
+          // person sleeps here. Not "crosses midnight" — nothing awake does,
+          // so that test never fired and the night fill never appeared.
+          const worksThroughNight = dayShifts.some(isNightShift);
           const jourAfter = dayShifts.some(
             (s) => s.standby && continuesTomorrow(s, shifts)
           );
@@ -709,7 +709,7 @@ function MonthView({
         </li>
         <li className="key__item">
           <span className="key__swatch key__swatch--jour" aria-hidden="true" />
-          nattjour
+          jour
         </li>
         {/* Stripes over a fill, not a fill of their own: they say "and jour"
             on top of whatever the day already was. */}
@@ -731,19 +731,27 @@ function MonthView({
         {[...byDay.entries()]
           .sort((a, b) => a[0] - b[0])
           .map(([day, dayShifts]) => {
-            const allTail = dayShifts.every((s) => isContinuation(s, shifts));
+            // A day you never travelled in for: the hours it holds are last
+            // night finishing, plus anything served from home. Asked the same
+            // way the calendar asks it — `workdays` is the set of days with a
+            // shift that is neither standby nor a continuation.
+            //
+            // Not `every(isContinuation)`: an evening jour block is not a
+            // continuation, so a morning-after that later picks up jour would
+            // fail that test and take the full worked-day fill, while the
+            // identical day without the jour stayed pale. Days 1, 22, 24 and
+            // 29 all read as worked days on that rule.
+            const allTail = !workdays.has(day);
             // A day of nothing but jour is neither worked nor free, so it gets
             // its own row colour rather than borrowing one of theirs. Checked
             // on `kind`, not `standby`: sleeping here is also standby, but it
             // is a night spent at the workplace and must not take the
             // on-call-from-home hatch.
             const allJour = dayShifts.every((s) => s.kind === 'jour');
-            // Only an awake shift crossing midnight makes this a night row —
-            // a day worked to 22:00 and then covered by jour is not one, even
-            // though the jour block does run past midnight.
-            const spills = dayShifts.some(
-              (s) => !s.standby && continuesTomorrow(s, shifts)
-            );
+            // A night row is one holding the night shift — the awake evening
+            // ending 23:30. A day worked to 22:00 and then covered by jour is
+            // not one, even though the jour block runs past midnight.
+            const spills = dayShifts.some(isNightShift);
             return (
               <div
                 key={day}

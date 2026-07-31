@@ -215,6 +215,29 @@ export const isContinuation = (shift: Shift, all: readonly Shift[]): boolean => 
 };
 
 /**
+ * The handover into bed: a worked shift ending here is the person staffing the
+ * night. It is the same 23:30 that SLEEP_FROM starts at — the evening stops,
+ * and the same person is asleep on the premises from then until 06:30.
+ */
+/* Written out rather than derived from SLEEP_FROM: `fromMin` is defined much
+   further down, and hoisting it here for one string is not worth the churn.
+   The two are asserted equal in the tests. */
+const NIGHT_SHIFT_ENDS = '23:30';
+
+/**
+ * True when this is the night shift — the awake evening the night person works
+ * before going to bed here.
+ *
+ * Not "crosses midnight": nothing awake ever does in this schedule. The evening
+ * always stops at 23:30 and becomes sleep, so a test on the date boundary
+ * matched zero of the month's 141 worked shifts and the night colour could
+ * never appear. The 23:30 finish is what actually marks the night: 31 of them,
+ * one per night, each followed by that person's own sömn block.
+ */
+export const isNightShift = (shift: Shift): boolean =>
+  shift.kind === 'work' && shift.end === NIGHT_SHIFT_ENDS;
+
+/**
  * True when this shift runs to midnight and is picked up again at 00:00 the
  * next day — the first half of a night split across the date boundary. The
  * mirror of `isContinuation`, so the two halves can point at each other.

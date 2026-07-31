@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { parseSchedule, shiftsFor, workdaysOf, splitHours, continuesTomorrow, isContinuation, type TextItem } from './schedule.ts';
+import { parseSchedule, shiftsFor, workdaysOf, splitHours, continuesTomorrow, isContinuation, isNightShift, type TextItem } from './schedule.ts';
 
 const PDF =
   process.env.ROSENBO_PDF ??
@@ -140,6 +140,35 @@ test('jour is the night half of line 1, not the whole line', { skip: !available 
   // ES's lone 07:00–08:00 on the 10th follows nothing, so it is a trip in.
   assert.equal(es.find((x) => x.dayNum === 10)!.standby, false);
   assert.equal(workdaysOf(es).has(10), true);
+});
+
+test('the night shift is the evening ending 23:30', { skip: !available }, async () => {
+  const s = await load();
+
+  // Nothing awake crosses midnight in this schedule: the evening stops at
+  // 23:30 and the same person is asleep here until 06:30. A night colour keyed
+  // on the date boundary therefore matched nothing at all — 0 of the month's
+  // worked shifts — which is what 23:30 replaced.
+  let crossing = 0;
+  let nights = 0;
+  for (const p of s.people) {
+    const sh = shiftsFor(s, p);
+    for (const x of sh) {
+      if (x.kind !== 'work') continue;
+      if (continuesTomorrow(x, sh)) crossing++;
+      if (isNightShift(x)) nights++;
+    }
+  }
+  assert.equal(crossing, 0, 'no awake shift crosses midnight');
+  assert.equal(nights, 31, 'one night shift per night');
+
+  // 23:30 is the same handover the parser puts people to bed at, so the shift
+  // that ends there is always followed by that person's own sömn.
+  const ff = shiftsFor(s, 'FF');
+  const night = ff.find((x) => x.dayNum === 2 && isNightShift(x))!;
+  assert.equal(night.end, '23:30');
+  const after = ff.find((x) => x.dayNum === 2 && x.start === '23:30')!;
+  assert.equal(after.kind, 'sleep');
 });
 
 test('the 1st continues a night from the previous month', { skip: !available }, async () => {
