@@ -584,6 +584,13 @@ function MonthView({
           // in with either.
           const allStandby = dayShifts.every((s) => s.standby);
 
+          // ...but jour also lands on days that are otherwise ordinary: FF
+          // works the 22nd, sleeps here, and picks up jour at 22:00. The fill
+          // can only say one thing, so a day that merely *contains* jour keeps
+          // its own fill and takes a corner mark instead. Without this, 51 h of
+          // jour showed up as a single cell.
+          const hasJour = dayShifts.some((s) => s.kind === 'jour');
+
           // Only finishing last night's shift: not a day you travel in, so it
           // must not look like the filled workdays around it.
           if (!isWorkday) {
@@ -600,7 +607,7 @@ function MonthView({
                   allStandby
                     ? 'nattjour — beredskap hemifrån'
                     : 'ledig — nattpasset från dagen innan slutar denna morgon'
-                }`}
+                }${hasJour && !allStandby ? ', med jour' : ''}`}
                 onClick={() => setOpenDay(day)}
               >
                 <span className="cal__num">{day}</span>
@@ -615,6 +622,11 @@ function MonthView({
                   <span className="cal__moon cal__moon--jour" aria-hidden="true">
                     <MoonIcon />
                   </span>
+                )}
+                {/* A free morning that still picks up jour in the evening — the
+                    cell is a tail, so the jour needs its own mark. */}
+                {hasJour && !allStandby && (
+                  <span className="cal__jour" aria-hidden="true" />
                 )}
               </button>
             );
@@ -651,7 +663,7 @@ function MonthView({
               aria-current={isToday ? 'date' : undefined}
               aria-label={`${day} ${WEEK_LONG[wd]}${isToday ? ', i dag' : ''}, arbetsdag${
                 trips.length > 1 ? `, ${trips.length} pass` : ''
-              }${
+              }${hasJour ? ', med jour' : ''}${
                 worksThroughNight
                   ? ', nattpass som fortsätter till nästa dag'
                   : jourAfter
@@ -661,6 +673,12 @@ function MonthView({
               onClick={() => setOpenDay(day)}
             >
               <span className="cal__num">{day}</span>
+              {/* A worked day that also carries jour. The fill is already
+                  spoken for by the work, so the jour gets a corner wedge —
+                  present on every such day, not only the jour-only ones. */}
+              {hasJour && (
+                <span className="cal__jour" aria-hidden="true" />
+              )}
               {/* Moon in the top corner labels the day; the arrow leaves from
                   the bottom right, the side it carries into tomorrow. The
                   count of trips is no longer drawn — it stays in the label
@@ -701,6 +719,12 @@ function MonthView({
           <span className="key__swatch key__swatch--jour" aria-hidden="true" />
           nattjour
         </li>
+        {/* The wedge, not a fill: it marks jour landing on a day that already
+            has one — which is most of them. */}
+        <li className="key__item">
+          <span className="key__swatch key__swatch--wedge" aria-hidden="true" />
+          jour del av dygnet
+        </li>
       </ul>
 
       {/* Every shift, in order. The calendar is the overview; this is the
@@ -717,8 +741,11 @@ function MonthView({
           .map(([day, dayShifts]) => {
             const allTail = dayShifts.every((s) => isContinuation(s, shifts));
             // A day of nothing but jour is neither worked nor free, so it gets
-            // its own row colour rather than borrowing one of theirs.
-            const allJour = dayShifts.every((s) => s.standby);
+            // its own row colour rather than borrowing one of theirs. Checked
+            // on `kind`, not `standby`: sleeping here is also standby, but it
+            // is a night spent at the workplace and must not take the
+            // on-call-from-home hatch.
+            const allJour = dayShifts.every((s) => s.kind === 'jour');
             // Only an awake shift crossing midnight makes this a night row —
             // a day worked to 22:00 and then covered by jour is not one, even
             // though the jour block does run past midnight.

@@ -380,6 +380,29 @@ button.cal__day:focus-visible { z-index: 1; }
 /* The filled cells keep white numerals and just gain weight. */
 .cal__day--today.cal__day--on .cal__num { font-weight: 750; }
 
+/* Jour sitting on a day that already has a fill — worked, or a night's tail.
+   A wedge in the top-right corner, the one corner always free: the moon takes
+   top-left, and the arrows the two bottom ones (out to the right, in from the
+   left). Uses the same pale jour ink as the jour-only cell, so "on call" looks
+   the same wherever it appears. */
+.cal__jour {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 0.5rem 0.5rem 0;
+  border-color: transparent var(--band-jour) transparent transparent;
+  border-top-right-radius: var(--r-sm);
+}
+
+/* On the pale tail cell the light wedge would vanish, so it takes the darker
+   edge ink instead. */
+.cal__day--tail .cal__jour {
+  border-color: transparent var(--band-jour-line) transparent transparent;
+}
+
 /* A workday: a day you get up and travel in. Filled — the only thing with
    weight, because this is the question the calendar answers. */
 .cal__day--on {
@@ -508,6 +531,18 @@ button.cal__day:focus-visible { z-index: 1; }
     var(--band-jour-line) 3px 4px
   );
   box-shadow: inset 0 0 0 1px var(--band-jour-line);
+}
+
+/* A miniature of the calendar cell: the day fill with the jour wedge in its
+   top-right corner, so the key shows the mark exactly as it appears. */
+.key__swatch--wedge {
+  background:
+    linear-gradient(
+      225deg,
+      var(--band-jour) 0 0.28rem,
+      transparent 0.28rem
+    ),
+    var(--band-day);
 }
 
 /* ------------------------------------------------------------------- sheet */

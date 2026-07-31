@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { parseSchedule, shiftsFor, workdaysOf, splitHours, continuesTomorrow, type TextItem } from './schedule.ts';
+import { parseSchedule, shiftsFor, workdaysOf, splitHours, continuesTomorrow, isContinuation, type TextItem } from './schedule.ts';
 
 const PDF =
   process.env.ROSENBO_PDF ??
@@ -140,6 +140,29 @@ test('jour is the night half of line 1, not the whole line', { skip: !available 
   // ES's lone 07:00–08:00 on the 10th follows nothing, so it is a trip in.
   assert.equal(es.find((x) => x.dayNum === 10)!.standby, false);
   assert.equal(workdaysOf(es).has(10), true);
+});
+
+test('the 1st continues a night from the previous month', { skip: !available }, async () => {
+  const s = await load();
+  const ff = shiftsFor(s, 'FF');
+
+  // FF slept at the workplace on July 31st, which this file cannot show — it
+  // begins mid-night, with a 00:00 block and no evening before it. The line it
+  // sits on is the only evidence, and it must be read the same as any other
+  // morning: sleep, then the waking hours, and not a day travelled in for.
+  const day1 = ff.filter((x) => x.dayNum === 1);
+  assert.equal(day1[0].kind, 'sleep', 'the 00:00 block is last night finishing');
+  assert.equal(isContinuation(day1[0], ff), true);
+  assert.equal(day1[1].kind, 'work', 'awake at 06:30, still in the building');
+  assert.equal(isContinuation(day1[1], ff), true, 'not a trip in');
+  assert.equal(workdaysOf(ff).has(1), false);
+
+  // Read as an ordinary morning it would merge into one 00:00–09:00 work block
+  // and take 6.5 h of sleep with it. Across the whole file that is exactly the
+  // shortfall: 7 h a night for all 31 nights, and no more.
+  let sleep = 0;
+  for (const p of s.people) sleep += splitHours(shiftsFor(s, p)).sleep;
+  assert.equal(sleep, 7 * 31);
 });
 
 test('an evening worked to 22:00 then jour is not a worked night', { skip: !available }, async () => {

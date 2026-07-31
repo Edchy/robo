@@ -187,9 +187,15 @@ const kindOfBlock = (
  * started is not a workday; a one-hour morning shift very much is.
  */
 export const isContinuation = (shift: Shift, all: readonly Shift[]): boolean => {
-  const cameFromLastNight = all.some(
-    (p) => p.dayNum === shift.dayNum - 1 && p.end === '24:00'
-  );
+  // Whether a night landed on this day at all — a property of the day, not of
+  // the shift being asked about, so the morning-after clause below can use it
+  // too. Day 1 has no predecessor in this file, but a block starting at
+  // midnight still arrived from somewhere: last month's schedule. Nothing else
+  // begins at 00:00, so its presence on the 1st is the evidence.
+  const cameFromLastNight =
+    shift.dayNum === 1
+      ? all.some((p) => p.dayNum === 1 && p.start === '00:00')
+      : all.some((p) => p.dayNum === shift.dayNum - 1 && p.end === '24:00');
   if (shift.start === '00:00') return cameFromLastNight;
 
   // The morning after sleeping at the workplace. The sleeper wakes at 06:30 and
@@ -505,6 +511,26 @@ export function shiftsFor(schedule: Schedule, code: string): Shift[] {
   let carriedJour = false;
   // The same question for the sleeper: did they go to bed here last night?
   let carriedSleep = false;
+
+  // The first of the month has no previous day in this file — the night it
+  // continues was written in last month's PDF. Without this, a 00:00 block on
+  // day 1 falls through to ordinary work: FF's 00:00–06:30 on Aug 1 is the tail
+  // of a July 31st sleepover, but looked like a morning shift travelled in for.
+  //
+  // The line it sits on says which kind of night it was, the same rule that
+  // classifies every other day: line 0 slept here, line 1 was on call. A 00:00
+  // block is only ever the tail of a night, since nothing else starts at
+  // midnight, so its presence is enough to infer the night behind it.
+  const firstDay = schedule.days[0];
+  if (firstDay) {
+    firstDay.lines.forEach((line, lineIndex) => {
+      for (const b of line.blocks) {
+        if (b.start !== '00:00' || !b.codes.includes(code)) continue;
+        if (lineIndex === 0) carriedSleep = true;
+        else carriedJour = true;
+      }
+    });
+  }
 
   for (const day of schedule.days) {
     const mine: (Block & { kind: ShiftKind })[] = [];
