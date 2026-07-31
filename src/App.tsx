@@ -878,6 +878,7 @@ function MonthView({
                   <span className="pass__wd">
                     {dayShifts[0].weekday.slice(0, 3)}
                   </span>
+                  {day === today && <span className="pass__today">idag</span>}
                 </span>
 
                 <span className="pass__shifts">
@@ -926,10 +927,6 @@ function MonthView({
                   ))}
                 </span>
 
-                {/* Sits at the end of the row, after the hours. Belongs to the
-                    day rather than to any one shift, so it is a sibling of the
-                    shift stack instead of living inside it. */}
-                {day === today && <span className="pass__today">idag</span>}
               </div>
             );
           })}

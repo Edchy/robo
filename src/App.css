@@ -974,38 +974,31 @@ button.cal__day:focus-visible { z-index: 1; }
   --faint-on-row: oklch(53% 0.008 265);
 }
 
-/* Today's row. Every background is already spoken for — day, night, jour,
-   continuation — so today cannot be another fill without colliding with one of
-   them. It takes a ring instead: a channel nothing else uses, which therefore
-   works on all four row types without knowing which one it landed on. */
-.pass--today {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
-}
-
-/* Sits at the end of the row, after the hours. A solid pill in the row's own
-   ink with the row's fill punched back out of it — so it inverts cleanly on all
-   four row types. Each fill is named explicitly below rather than blended: a
-   screen blend against a white pill resolves to white, which erased the text. */
+/* Today belongs with the date, not the hours. Positioned under the date without
+   taking layout space, so every time and hours column stays aligned. A small
+   dot is enough to locate today without making the row look selected. */
 .pass__today {
-  align-self: center;
-  flex: none;
-  padding: 0.0625rem 0.375rem;
-  border-radius: 999px;
-  background: var(--ink-on-row);
-  color: var(--band-day);
-  font-size: 0.625rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  position: absolute;
+  top: 1.55rem;
+  left: 0.125rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--ink-on-row);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 
-.pass--spills .pass__today { color: var(--band-night); }
-
-/* The pale rows carry dark ink, so the pill is dark and the text is the page. */
-.pass--jour .pass__today,
-.pass--tail .pass__today { color: var(--surface); }
+.pass__today::before {
+  content: '';
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
 
 
 /* A day's shifts stack here; the date beside them is printed once. */
