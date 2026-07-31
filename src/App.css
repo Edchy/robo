@@ -532,27 +532,31 @@ button.cal__day:focus-visible { z-index: 1; }
 
 .key__swatch--night { background: var(--band-night); }
 
-.key__swatch--jour {
-  background:
-    repeating-linear-gradient(
-      -45deg,
-      transparent 0 3px,
-      var(--band-jour-line) 3px 4px
-    ),
-    var(--band-jour);
-  box-shadow: inset 0 0 0 1px var(--band-jour-line);
+/* A morning that only finishes last night's shift — pale and dashed, as the
+   cell is. Common enough to name, and it was never in the key. */
+.key__swatch--tail {
+  background: oklch(93.5% 0.003 265);
+  box-shadow: inset 0 0 0 1px var(--ink-faint);
 }
 
-/* A miniature of the striped cell: the day fill under the same hatch the
-   calendar lays over any day carrying jour. */
-.key__swatch--wedge {
-  background:
-    repeating-linear-gradient(
-      -45deg,
-      transparent 0 3px,
-      oklch(100% 0 0 / 0.3) 3px 4px
-    ),
-    var(--band-day);
+/* The jour modifier. Deliberately grey rather than any one band colour: it is
+   the hatch that means jour, whichever fill it happens to lie over, and a
+   coloured swatch here would read as a fourth fill. */
+.key__swatch--stripes {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 3px,
+    var(--ink-faint) 3px 4px
+  );
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+/* The stripe rule is a modifier, not another fill, so it sits slightly apart
+   from the three colours it can be laid over. */
+.key__item--rule {
+  margin-left: 0.25rem;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--line);
 }
 
 /* ------------------------------------------------------------------- sheet */

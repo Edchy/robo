@@ -697,7 +697,10 @@ function MonthView({
         })}
       </section>
 
-      {/* Names the two fills the calendar and the list share. */}
+      {/* Two axes, listed separately rather than multiplied out. The fill says
+          what kind of day it was; the stripes say "and jour on top of that".
+          Enumerating the combinations meant an entry per pairing — and it was
+          still short of the tail and sömn states. */}
       <ul className="key" aria-label="Färgförklaring">
         <li className="key__item">
           <span className="key__swatch" aria-hidden="true" />
@@ -708,14 +711,12 @@ function MonthView({
           nattpass
         </li>
         <li className="key__item">
-          <span className="key__swatch key__swatch--jour" aria-hidden="true" />
-          jour
+          <span className="key__swatch key__swatch--tail" aria-hidden="true" />
+          slutar nattpass
         </li>
-        {/* Stripes over a fill, not a fill of their own: they say "and jour"
-            on top of whatever the day already was. */}
-        <li className="key__item">
-          <span className="key__swatch key__swatch--wedge" aria-hidden="true" />
-          pass + jour
+        <li className="key__item key__item--rule">
+          <span className="key__swatch key__swatch--stripes" aria-hidden="true" />
+          streckat = jour
         </li>
       </ul>
 
