@@ -449,6 +449,17 @@ function MonthView({
 
   const daysInMonth = schedule.days.length;
 
+  // Which day is today — but only when the month on screen is the month we are
+  // actually in. Looking at September in August must not put a ring on the 14th.
+  // Local date, not UTC: "today" is the user's calendar day, and near midnight
+  // the two disagree.
+  const today = useMemo(() => {
+    const now = new Date();
+    return now.getFullYear() === schedule.year && now.getMonth() + 1 === schedule.month
+      ? now.getDate()
+      : null;
+  }, [schedule.year, schedule.month]);
+
   // Monday-first weekday index (0 = Monday). getUTCDay() is Sunday-0, hence +6.
   const first = new Date(Date.UTC(schedule.year, schedule.month - 1, 1));
   const lead = (first.getUTCDay() + 6) % 7;
@@ -512,9 +523,15 @@ function MonthView({
           // Trips to work that day — a continuation is not one of them.
           const trips = dayShifts.filter((s) => !isContinuation(s, shifts));
 
+          const isToday = day === today;
+
           if (dayShifts.length === 0) {
             return (
-              <span key={day} className="cal__day">
+              <span
+                key={day}
+                className={`cal__day ${isToday ? 'cal__day--today' : ''}`}
+                aria-current={isToday ? 'date' : undefined}
+              >
                 <span className="cal__num">{day}</span>
               </span>
             );
@@ -535,8 +552,9 @@ function MonthView({
                 type="button"
                 className={`cal__day ${
                   allStandby ? 'cal__day--jour' : 'cal__day--tail'
-                }`}
-                aria-label={`${day} ${WEEK_LONG[wd]}, ${
+                } ${isToday ? 'cal__day--today' : ''}`}
+                aria-current={isToday ? 'date' : undefined}
+                aria-label={`${day} ${WEEK_LONG[wd]}${isToday ? ', i dag' : ''}, ${
                   allStandby
                     ? 'nattjour — beredskap hemifrån'
                     : 'ledig — nattpasset från dagen innan slutar denna morgon'
@@ -585,8 +603,11 @@ function MonthView({
               type="button"
               className={`cal__day cal__day--on ${
                 worksThroughNight ? 'cal__day--night' : ''
-              } ${spillsOver ? 'cal__day--spills' : ''}`}
-              aria-label={`${day} ${WEEK_LONG[wd]}, arbetsdag${
+              } ${spillsOver ? 'cal__day--spills' : ''} ${
+                isToday ? 'cal__day--today' : ''
+              }`}
+              aria-current={isToday ? 'date' : undefined}
+              aria-label={`${day} ${WEEK_LONG[wd]}${isToday ? ', i dag' : ''}, arbetsdag${
                 trips.length > 1 ? `, ${trips.length} pass` : ''
               }${
                 worksThroughNight
@@ -667,7 +688,10 @@ function MonthView({
                 key={day}
                 className={`pass ${allJour ? 'pass--jour' : ''} ${
                   allTail && !allJour ? 'pass--tail' : ''
-                } ${spills && !allJour ? 'pass--spills' : ''}`}
+                } ${spills && !allJour ? 'pass--spills' : ''} ${
+                  day === today ? 'pass--today' : ''
+                }`}
+                aria-current={day === today ? 'date' : undefined}
               >
                 <span className="pass__date">
                   <span className="pass__num">{day}</span>
@@ -708,6 +732,11 @@ function MonthView({
                     </span>
                   ))}
                 </span>
+
+                {/* Sits at the end of the row, after the hours. Belongs to the
+                    day rather than to any one shift, so it is a sibling of the
+                    shift stack instead of living inside it. */}
+                {day === today && <span className="pass__today">idag</span>}
               </div>
             );
           })}

@@ -316,6 +316,28 @@ button.cal__day:focus-visible { z-index: 1; }
   line-height: 1;
 }
 
+/* Today. A ring rather than a fill, for the same reason as the list row: all
+   four backgrounds already mean something, so the one free channel is the
+   outline. Sits outside the cell's own edge and lifts above its neighbours so
+   the grid gap cannot clip it. */
+.cal__day--today {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+  z-index: 1;
+}
+
+/* An empty or pale day is the faintest cell on the grid, so the ring alone can
+   read as an odd border. Darkening the number settles it. Deliberately not
+   applied to the filled cells: their numerals are white on --band-day/--night
+   and must stay that way. */
+.cal__day--today:not(.cal__day--on) .cal__num {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* The filled cells keep white numerals and just gain weight. */
+.cal__day--today.cal__day--on .cal__num { font-weight: 750; }
+
 /* A workday: a day you get up and travel in. Filled — the only thing with
    weight, because this is the question the calendar answers. */
 .cal__day--on {
@@ -745,6 +767,40 @@ button.cal__day:focus-visible { z-index: 1; }
      --sunk is dark enough to put it at 4.4:1. */
   --faint-on-row: oklch(53% 0.008 265);
 }
+
+/* Today's row. Every background is already spoken for — day, night, jour,
+   continuation — so today cannot be another fill without colliding with one of
+   them. It takes a ring instead: a channel nothing else uses, which therefore
+   works on all four row types without knowing which one it landed on. */
+.pass--today {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Sits at the end of the row, after the hours. A solid pill in the row's own
+   ink with the row's fill punched back out of it — so it inverts cleanly on all
+   four row types. Each fill is named explicitly below rather than blended: a
+   screen blend against a white pill resolves to white, which erased the text. */
+.pass__today {
+  align-self: center;
+  flex: none;
+  padding: 0.0625rem 0.375rem;
+  border-radius: 999px;
+  background: var(--ink-on-row);
+  color: var(--band-day);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pass--spills .pass__today { color: var(--band-night); }
+
+/* The pale rows carry dark ink, so the pill is dark and the text is the page. */
+.pass--jour .pass__today,
+.pass--tail .pass__today { color: var(--surface); }
+
 
 /* A day's shifts stack here; the date beside them is printed once. */
 .pass__shifts {
