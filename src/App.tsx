@@ -555,11 +555,15 @@ function MonthView({
         )}
       </dl>
 
-      {/* Only worth saying when there is more than one figure to add. */}
+      {/* Only worth saying when there is more than one figure to add. The
+          figure and its caption are separate so the number can carry the
+          weight while the words stay quiet. */}
       {(totals.sleep > 0 || totals.jour > 0) && (
         <p className="tot__sum">
-          {formatHours(totals.worked + totals.sleep + totals.jour)} timmar
-          totalt på schemat
+          <span className="tot__sum-val">
+            {formatHours(totals.worked + totals.sleep + totals.jour)} timmar
+          </span>
+          <span className="tot__sum-label">totalt på schemat</span>
         </p>
       )}
 

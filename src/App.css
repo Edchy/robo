@@ -259,21 +259,37 @@ body {
   margin: 0 0 1.25rem;
 }
 
-/* ...and closes it again when the sum does follow, since that carries its
-   own bottom margin. */
-.tot:has(+ .tot__sum) { margin-bottom: 0.5rem; }
+/* ...and closes up when the sum follows, so the band reads as part of the same
+   block rather than a separate row. */
+.tot:has(+ .tot__sum) { margin-bottom: 0.375rem; }
 
-/* The sum of the three cards. Quiet — it is context for them, not a fourth
-   figure — and separated by a rule so it reads as their total rather than
-   another item in the row. */
+/* The sum of the three cards. A tinted band spanning their full width rather
+   than a line of small print: it is the one figure that answers "how much is
+   this month", and at 13px grey it read as a footnote to the cards instead of
+   their conclusion. Sits flush under them, sharing their radius, so the four
+   read as one block. */
 .tot__sum {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.4375rem;
   margin: 0 0 1.25rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--line);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--r-sm);
+  background: var(--sunk);
+  font-variant-numeric: tabular-nums;
+}
+
+.tot__sum-val {
+  font-size: 1rem;
+  font-weight: 640;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+
+.tot__sum-label {
   font-size: 0.8125rem;
   color: var(--ink-faint);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
 }
 
 .tot__item {
