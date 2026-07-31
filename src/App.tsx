@@ -354,7 +354,7 @@ function DayDialog({
                     )}
                   </span>
                   <span className="sheet__hours">
-                    {formatHours(s.hours)} h
+                    {formatHours(s.hours)} t
                     {s.standby && (
                       <span className="sheet__tag">
                         {s.kind === 'sleep' ? 'sömn' : 'jour'}
@@ -402,23 +402,25 @@ function DayDialog({
           })}
         </ul>
 
-        {/* Worked and jour hours are never added together: jour is spent at
-            home, so one figure would overstate the day. */}
+        {/* The three rates are never added together: an hour asleep here and an
+            hour on call at home are not worked hours, so one figure would
+            overstate the day. Same words as the month totals above. */}
         <dl className="sheet__facts">
+          {/* No unit on these either — the labels say "timmar". */}
           <div className="sheet__fact">
-            <dt>Arbete</dt>
-            <dd>{formatHours(worked)} h</dd>
+            <dt>Arbetstimmar</dt>
+            <dd>{formatHours(worked)}</dd>
           </div>
           {sleep > 0 && (
             <div className="sheet__fact">
-              <dt>Sömn</dt>
-              <dd>{formatHours(sleep)} h</dd>
+              <dt>Sovtimmar</dt>
+              <dd>{formatHours(sleep)}</dd>
             </div>
           )}
           {jour > 0 && (
             <div className="sheet__fact">
-              <dt>Jour</dt>
-              <dd>{formatHours(jour)} h</dd>
+              <dt>Jourtimmar</dt>
+              <dd>{formatHours(jour)}</dd>
             </div>
           )}
           <div className="sheet__fact">
@@ -539,19 +541,20 @@ function MonthView({
           not a payable figure, and says so in words. */}
       <dl className="tot">
         <div className="tot__item">
-          <dt className="tot__label">Arbete</dt>
-          <dd className="tot__val">{formatHours(totals.worked)} h</dd>
+          {/* No unit on the figure: the label already says "timmar". */}
+          <dt className="tot__label">Arbetstimmar</dt>
+          <dd className="tot__val">{formatHours(totals.worked)}</dd>
         </div>
         {totals.sleep > 0 && (
           <div className="tot__item tot__item--sleep">
-            <dt className="tot__label">Sömn</dt>
-            <dd className="tot__val">{formatHours(totals.sleep)} h</dd>
+            <dt className="tot__label">Sovtimmar</dt>
+            <dd className="tot__val">{formatHours(totals.sleep)}</dd>
           </div>
         )}
         {totals.jour > 0 && (
           <div className="tot__item tot__item--jour">
-            <dt className="tot__label">Jour</dt>
-            <dd className="tot__val">{formatHours(totals.jour)} h</dd>
+            <dt className="tot__label">Jourtimmar</dt>
+            <dd className="tot__val">{formatHours(totals.jour)}</dd>
           </div>
         )}
       </dl>
@@ -559,8 +562,8 @@ function MonthView({
       {/* Only worth saying when there is more than one figure to add. */}
       {(totals.sleep > 0 || totals.jour > 0) && (
         <p className="tot__sum">
-          {formatHours(totals.worked + totals.sleep + totals.jour)} h totalt på
-          schemat
+          {formatHours(totals.worked + totals.sleep + totals.jour)} timmar
+          totalt på schemat
         </p>
       )}
 
@@ -815,7 +818,7 @@ function MonthView({
                         )}
                       </span>
                       <span className="pass__hours">
-                        {formatHours(s.hours)} h
+                        {formatHours(s.hours)} t
                       </span>
                     </span>
                   ))}

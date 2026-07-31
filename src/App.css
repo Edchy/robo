@@ -281,15 +281,9 @@ body {
   min-width: 5.5rem;
   padding: 0.5rem 0.625rem;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--band-day);
   border-radius: var(--r-sm);
   background: var(--surface);
 }
-
-/* Each figure takes the ink of the thing it counts, matching the calendar
-   below — so "Sömn" here and a night cell there are visibly the same subject. */
-.tot__item--sleep { border-left-color: var(--band-night); }
-.tot__item--jour { border-left-color: var(--band-jour-line); }
 
 .tot__label {
   font-size: 0.6875rem;
@@ -297,6 +291,7 @@ body {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--ink-faint);
+  white-space: nowrap;
 }
 
 .tot__val {
@@ -833,18 +828,22 @@ button.cal__day:focus-visible { z-index: 1; }
 }
 
 /* The day's arithmetic, set apart from the shifts it sums. Each figure sits in
-   its own cell so "Arbete" and "Jour" read as two answers, never one total. */
+   its own cell so the three rates read as separate answers, never one total. */
 .sheet__facts {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin: 0;
   padding-top: 0.875rem;
   border-top: 1px solid var(--line);
 }
 
+/* Sized to the label rather than to an equal share: with four tiles and words
+   as long as "Arbetstimmar", equal columns clipped the text. They wrap to a
+   second row instead when the widest day needs it. */
 .sheet__fact {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: max-content;
   padding: 0.5rem 0.625rem;
   border-radius: var(--r-sm);
   background: var(--sunk);
@@ -853,8 +852,9 @@ button.cal__day:focus-visible { z-index: 1; }
 .sheet__fact dt {
   font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
+  white-space: nowrap;
   color: var(--ink-faint);
 }
 
@@ -1404,6 +1404,12 @@ button.cal__day:focus-visible { z-index: 1; }
      give up its width. The chip still names the person, and the button keeps
      its accessible description either way. */
   .who__label { display: none; }
+
+  /* "Arbetstimmar" and "Jourtimmar" are wider than a third of a phone once
+     uppercased and tracked out, so the label sheds its extra spacing and the
+     card its side padding rather than clipping the word. */
+  .tot__item { padding-inline: 0.5rem; }
+  .tot__label { letter-spacing: 0.01em; font-size: 0.625rem; }
 
   /* Full viewport on a phone: at this width a centred card would leave a
      margin too thin to read as deliberate, and the detail is the only thing
