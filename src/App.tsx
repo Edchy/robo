@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { readSchedulePdf } from './pdf';
+import { downloadIcs } from './ics';
 import {
   formatHours,
   shiftsFor,
@@ -47,6 +48,19 @@ export default function App() {
     setError(null);
     try {
       const parsed = await readSchedulePdf(file);
+      // A plausible but incomplete result is more dangerous than no result.
+      // Coverage gaps mean the file was only partly understood, so do not let
+      // the user plan from it.
+      if (parsed.warnings.length > 0) {
+        const affected = parsed.warnings
+          .slice(0, 3)
+          .map((warning) => warning.split(':')[0])
+          .join(', ');
+        throw new ScheduleError(
+          `Schemat kunde inte läsas säkert. Täckning saknas den ${affected}. ` +
+            'Kontrollera att du valde original-PDF:en och försök igen.'
+        );
+      }
       setSchedule(parsed);
       saveSchedule(parsed);
       // Keep a remembered person only if they appear in this month's file.
@@ -115,46 +129,81 @@ function Dropzone({
 
   return (
     <main className="shell shell--center">
-      <div className="intro">
-        <h1 className="intro__title">Mitt schema</h1>
-        <p className="intro__sub">
-          Släpp månadens schema-PDF här så visas bara dina pass.
-        </p>
-      </div>
+      <section className="upload-layout">
+        <div className="upload-copy">
+          <div className="intro">
+        {/* The old pair described a file conversion — true, and joyless. The
+            heading now asks the question people actually open this to answer,
+            and the line under it answers back. Warmth by recognition, not by
+            exclamation marks: the brand is calm and never chirpy. */}
+            <p className="intro__label">Ditt arbetsschema</p>
+            <h1 className="intro__title">När jobbar jag?</h1>
+            <p className="intro__sub">
+              Släng in månadens PDF, så slipper du leta efter dina pass.
+            </p>
+          </div>
 
-      <label
-        className={`drop ${over ? 'drop--over' : ''} ${busy ? 'drop--busy' : ''}`}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setOver(true);
-        }}
-        onDragLeave={() => setOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setOver(false);
-          const file = e.dataTransfer.files[0];
-          if (file) onFile(file);
-        }}
-      >
-        <input
-          type="file"
-          accept="application/pdf,.pdf"
-          hidden
-          disabled={busy}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) onFile(file);
-            e.target.value = '';
+      {/* Only one thing has to happen before this screen works: the PDF has to
+          exist as a file on the device. That is what this explains.
+
+          It was a numbered list of three, but the third step — picking your
+          initials — happens on the next screen, which asks "Vem är du?" in its
+          own words. Documenting it here described a screen the reader cannot
+          see yet, and the remaining "choose the file below" only narrated the
+          dropzone directly underneath. One instruction is not a sequence, so
+          the numbers are gone: prose, above the box it prepares you for. */}
+          <section className="how" aria-labelledby="how-title">
+            <h2 className="how__title" id="how-title">
+              Har du schemat kvar i mejlet?
+            </h2>
+            <p className="how__body">
+              Öppna bilagan och välj <strong>Spara i Filer</strong> på telefonen.
+              På datorn laddar du ner den som vanligt.
+            </p>
+          </section>
+        </div>
+
+        <label
+          className={`drop ${over ? 'drop--over' : ''} ${busy ? 'drop--busy' : ''}`}
+          aria-busy={busy}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setOver(true);
           }}
-        />
-        <span className="drop__icon" aria-hidden="true">
-          {busy ? <Spinner /> : <DocIcon />}
-        </span>
-        <span className="drop__lead">
-          {busy ? 'Läser schemat…' : 'Släpp PDF-filen här'}
-        </span>
-        {!busy && <span className="drop__hint">eller tryck för att välja fil</span>}
-      </label>
+          onDragLeave={() => setOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setOver(false);
+            const file = e.dataTransfer.files[0];
+            if (file) onFile(file);
+          }}
+        >
+          <input
+            className="drop__input"
+            type="file"
+            accept="application/pdf,.pdf"
+            disabled={busy}
+            aria-label="Välj månadens schema som PDF-fil"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onFile(file);
+              e.target.value = '';
+            }}
+          />
+          <span className="drop__icon" aria-hidden="true">
+            {busy ? <Spinner /> : <DocIcon />}
+          </span>
+          <span className="drop__lead" aria-live="polite">
+            {busy ? 'Läser schemat…' : 'Välj månadens PDF'}
+          </span>
+          {!busy && (
+            <>
+              <span className="drop__button">Välj fil</span>
+              <span className="drop__hint">Du kan också släppa filen här</span>
+            </>
+          )}
+        </label>
+      </section>
 
       {error && (
         <p className="alert" role="alert">
@@ -162,31 +211,46 @@ function Dropzone({
         </p>
       )}
 
-      <details className="privacy">
+      {/* Same words, same icon, same small print as the caveat on the month
+          view: a first-time reader meets the caution here, and recognises it
+          again once the schedule is on screen. Always visible — a disclaimer
+          folded behind a summary is a disclaimer nobody read. */}
+      <div className="upload-meta">
+        <p className="caveat" role="note">
+          <AlertIcon />
+          <span>
+            Kontrollera alltid tiderna mot originalet. PDF-filer kan ibland
+            läsas fel.
+          </span>
+        </p>
+
+        <details className="privacy">
         <summary className="privacy__line">
-          <LockIcon /> Filen stannar i din telefon — inget laddas upp.
+          <LockIcon /> Filen stannar på din enhet — inget laddas upp.
         </summary>
         <div className="privacy__body">
           <p>
-            Schemat läses direkt i telefonen eller datorn. PDF-filen skickas
-            aldrig vidare — varken till oss, till arbetsgivaren eller till någon
-            annan. Appen fungerar även i flygplansläge när sidan väl har
-            laddats.
+            PDF-filen läses i telefonen eller datorn du sitter vid, och lämnar
+            aldrig enheten. Ingenting laddas upp. Det finns ingen inloggning och
+            inget konto, och när sidan väl har laddats fungerar den utan
+            internet.
           </p>
           <p>
-            För att du inte ska behöva leta upp PDF-filen varje gång sparas
-            månadens schema och dina initialer i webbläsaren — på din egen
-            enhet. Själva PDF-filen sparas aldrig, och schemat raderas
-            automatiskt när månaden är slut. Trycker du på{' '}
-            <strong>Glöm mig</strong> försvinner allt direkt.
+            Så att du slipper leta upp filen varje gång sparas månadens schema
+            och dina initialer i webbläsaren, på din egen enhet. Själva
+            PDF-filen sparas aldrig. Det sparade schemat försvinner av sig
+            självt när månaden är slut, och trycker du på{' '}
+            <strong>Glöm mig</strong>{' '}
+            försvinner allt direkt.
           </p>
           <p>
-            Tänk på att PDF-filen innehåller <em>hela</em> arbetsplatsens schema,
-            precis som när du får den via mejl. Appen visar bara dina pass — men
-            filen i sig är densamma. Dela den därför inte vidare.
+            Kom ihåg att både PDF-filen och det du ser här innehåller hela
+            arbetsplatsens schema — dina kollegors pass syns också. Behandla det
+            som vilket arbetsmaterial som helst och dela det inte vidare.
           </p>
         </div>
-      </details>
+        </details>
+      </div>
     </main>
   );
 }
@@ -353,11 +417,21 @@ function DayDialog({
                   {/* The tag is a sibling of the hours, not a child: nested, it
                       pushed the figure left, so only the rows without a tag
                       lined up with the right edge. */}
-                  {s.standby && (
-                    <span className="sheet__tag">
-                      {s.kind === 'sleep' ? 'sömn' : 'jour'}
-                    </span>
-                  )}
+                  {/* Sleep shows the zzz glyph where the word was; jour keeps
+                      its word, having no icon and needing none. The label goes
+                      on the tag so the state is still announced. */}
+                  {s.standby &&
+                    (s.kind === 'sleep' ? (
+                      <span
+                        className="sheet__tag sheet__tag--sleep"
+                        role="img"
+                        aria-label="sömn"
+                      >
+                        <ZzzIcon />
+                      </span>
+                    ) : (
+                      <span className="sheet__tag">jour</span>
+                    ))}
                   <span className="sheet__hours">
                     {formatHours(s.hours)} t
                   </span>
@@ -565,6 +639,27 @@ function MonthView({
           </span>
           <span className="tot__sum-label">totalt på schemat</span>
         </p>
+      )}
+
+      {/* Two ways to take the month with you, sitting with the month's figures
+          rather than with any one day. Both stay on the device — the calendar
+          file is built here, and printing never leaves the browser. Hidden on
+          paper, where they would be dead ink.
+
+          Only offered when there is something to take: a person with no shifts
+          this month would export an empty file. */}
+      {shifts.length > 0 && (
+        <section className="take" aria-label="Spara schemat">
+          <button
+            className="btn"
+            onClick={() => downloadIcs(me, shifts, schedule.monthLabel)}
+          >
+            <CalendarIcon /> Lägg till i kalendern
+          </button>
+          <button className="btn" onClick={() => window.print()}>
+            <PrintIcon /> Skriv ut
+          </button>
+        </section>
       )}
 
       <section className="cal" aria-label="Kalender">
@@ -806,11 +901,18 @@ function MonthView({
                         )}
                         {/* Jour is an obligation, not hours on the floor, so it
                             says so beside the time rather than only in totals. */}
-                        {s.standby && (
-                          <span className="pass__tail">
-                            {s.kind === 'sleep' ? 'sömn' : 'jour'}
-                          </span>
-                        )}
+                        {s.standby &&
+                          (s.kind === 'sleep' ? (
+                            <span
+                              className="pass__tail pass__tail--sleep"
+                              role="img"
+                              aria-label="sömn"
+                            >
+                              <ZzzIcon />
+                            </span>
+                          ) : (
+                            <span className="pass__tail">jour</span>
+                          ))}
                         {/* Say plainly that this is last night finishing, not
                             a new morning you travel in for. */}
                         {isContinuation(s, shifts) && !s.standby && (
@@ -849,12 +951,39 @@ function MonthView({
         />
       )}
 
-      <footer className="foot">
-        <span className="foot__note">
-          <LockIcon /> Schemat lästes i din telefon — inget laddades upp.
+      {/* The app reads a PDF that was never meant to be machine-read, so a
+          misparse is always possible. This says so plainly and points at the
+          original, which is the only authority. It sits above the footer rather
+          than inside it: it is a caution, not a housekeeping control, and it
+          must survive being printed. */}
+      <p className="caveat" role="note">
+        <AlertIcon />
+        <span>
+          Schemat läses automatiskt ur PDF-filen och kan bli fel. Använd det som
+          en hjälp, inte som facit. Stäm alltid av mot den ursprungliga
+          PDF-filen innan du planerar efter ett pass, och fråga din chef om
+          något ser konstigt ut. Du ansvarar själv för att kontrollera dina
+          tider.
         </span>
+      </p>
+
+      {/* The button used to sit beside a line about privacy, which said nothing
+          about what pressing it does. Now the text explains the button: what is
+          stored, what leaves, and where you end up. Named by its heading rather
+          than an aria-label, so the explanation is what describes it. */}
+      <footer className="foot" aria-labelledby="forget-title">
+        <div className="foot__text">
+          <h2 className="foot__title" id="forget-title">
+            Glöm mig
+          </h2>
+          <p className="foot__body">
+            Dina initialer och månadens schema ligger sparade i den här
+            webbläsaren. Tar du bort dem börjar du om med att välja fil. Pass du
+            redan lagt in i kalendern påverkas inte.
+          </p>
+        </div>
         <button className="foot__forget" onClick={onForget}>
-          Glöm mig
+          Ta bort mina uppgifter
         </button>
       </footer>
     </main>
@@ -872,6 +1001,27 @@ const DocIcon = () => (
       strokeLinecap="round"
       strokeLinejoin="round"
     />
+  </svg>
+);
+
+/* The two export controls. Drawn at the same 1.5 weight as DocIcon, so the
+   row of buttons reads as one family. */
+
+const CalendarIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M3 10h18M8 3v4M16 3v4" strokeLinecap="round" />
+  </svg>
+);
+
+const PrintIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path
+      d="M7 9V3h10v6M7 19H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <rect x="7" y="15" width="10" height="6" rx="1" />
   </svg>
 );
 
@@ -936,6 +1086,50 @@ const LockIcon = () => (
   >
     <rect x="4" y="10" width="16" height="11" rx="2" />
     <path d="M8 10V7a4 4 0 0 1 8 0v3" strokeLinecap="round" />
+  </svg>
+);
+
+/* Sleeping at the workplace: a crescent moon holding a Z, from public/z.svg.
+
+   Inlined rather than loaded as <img>, for the same two reasons every other
+   icon here is: a file request is a network call the privacy claim rules out,
+   and an <img> cannot inherit the row's ink. The source art is filled #fff,
+   which would vanish on the pale rows, so the fill is currentColor and each
+   row colours it like the text it replaced.
+
+   The fill-rule is evenodd in the source and must stay: the Z is cut out of
+   the crescent rather than drawn over it, and with the default nonzero rule
+   the whole moon fills solid and the letter disappears.
+
+   Keep this in step with public/z.svg by hand: the file is the source the
+   paths were copied from, but nothing loads it at runtime, so editing it alone
+   changes nothing on screen. */
+const ZzzIcon = () => (
+  <svg viewBox="0 0 512 512" fill="currentColor" aria-hidden="true">
+    <path d="m422.71 21.812c1.125-0.35938 2.2539-0.66406 3.3281-0.97266 0 0-1.125 0.20312-3.3281 0.97266z" />
+    <path
+      fillRule="evenodd"
+      d="m37.477 252.93c0 135.07 111.92 244.63 249.96 244.63 74.496 0 141.21-32.102 187.04-82.688-17.766 3.9414-36.199 6.0938-55.195 6.0938-138.04 0-249.96-109.52-249.96-244.63 0-62.156 23.91-118.73 62.926-161.89-111.46 24.574-194.77 122.01-194.77 238.49zm210.59 19.199 3.6367 46.898 105.68-13.055 0.87109-26.215-79.973 5.375 70.246-53.246-0.35938-41.168-96.973 2.0469 1.4844 33.535 60.723 6.6055zm105.42-171.88 6.9102 23.859 42.086-5.0703-37.121 38.809 10.754 33.125 68.812-26.469-3.9922-18.996-52.891 16.797 37.887-49.613-7.5273-29.543z"
+    />
+  </svg>
+);
+
+/* Sized and weighted like LockIcon, so the caveat and the privacy note below
+   it read as the same class of small print. Sits at the caveat's first line
+   rather than centred, so a wrapped paragraph still hangs off it. */
+const AlertIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.6"
+    width="14"
+    height="14"
+    aria-hidden="true"
+  >
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7.5v5.5" strokeLinecap="round" />
+    <path d="M12 16.5h.01" strokeLinecap="round" />
   </svg>
 );
 

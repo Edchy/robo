@@ -99,13 +99,13 @@ body {
 }
 
 .shell--center {
-  max-width: 32rem;
+  max-width: 64rem;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 1.75rem;
-  padding-bottom: 1.5rem;
+  gap: 1.5rem;
+  padding-block: 3rem;
 }
 
 /* ------------------------------------------------------------------ header */
@@ -172,6 +172,7 @@ body {
   font-size: 0.8125rem;
   font-weight: 550;
   padding: 0.4375rem 0.75rem;
+  min-height: 2.75rem;
   cursor: pointer;
   border-radius: var(--r-md);
   box-shadow: 0 1px 2px oklch(0% 0 0 / 0.05);
@@ -671,8 +672,8 @@ button.cal__day:focus-visible { z-index: 1; }
   border: 0;
   display: grid;
   place-items: center;
-  width: 2rem;
-  height: 2rem;
+  width: 2.75rem;
+  height: 2.75rem;
   background: var(--sunk);
   color: var(--ink-soft);
   padding: 0;
@@ -816,6 +817,26 @@ button.cal__day:focus-visible { z-index: 1; }
   background: var(--band-jour);
   padding: 0.0625rem 0.3125rem;
   border-radius: 3px;
+}
+
+/* The moon carries this tag instead of a word, so the pill goes with it. The
+   fill and padding exist to set a short uppercase word apart from the time
+   beside it; behind a shape they just box it in. The icon reads as its own
+   mark without them. */
+.sheet__tag--sleep {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  padding: 0;
+  letter-spacing: 0;
+}
+
+/* Square artwork, so a single box. Sized to sit with the time it follows
+   rather than to announce itself. */
+.sheet__tag--sleep svg {
+  display: block;
+  height: 1rem;
+  width: 1rem;
 }
 
 /* Who else is on the floor. Initials are the schedule's own vocabulary, so
@@ -1133,6 +1154,19 @@ button.cal__day:focus-visible { z-index: 1; }
   letter-spacing: 0;
 }
 
+/* Inherits --faint-on-row like the word did, so the glyph recedes on a dark
+   row and darkens to ink on paper by the same rule. */
+.pass__tail--sleep {
+  display: inline-flex;
+  align-items: center;
+}
+
+.pass__tail--sleep svg {
+  display: block;
+  height: 1rem;
+  width: 1rem;
+}
+
 /* A continuation is real worked time, so it stays legible — but it is not a
    day you travel in, so the whole row recedes behind the trips that are.
    Applied per shift rather than per day, since a day can both finish a night
@@ -1183,25 +1217,94 @@ button.cal__day:focus-visible { z-index: 1; }
   border-radius: var(--r-md);
 }
 
-/* -------------------------------------------------------------------- foot */
+/* -------------------------------------------------------------------- take */
 
-.foot {
+/* Taking the month away: to a phone calendar, or to paper. Sits between the
+   month's figures and the calendar, so it reads as belonging to the month
+   rather than to any one day.
+
+   The bottom margin matches the one .tot__sum hands to the calendar when it is
+   the last block above it, so the calendar starts in the same place whether or
+   not these buttons are shown. */
+.take {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  justify-content: center;
   flex-wrap: wrap;
-  margin-top: 2.5rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--line);
+  gap: 0.625rem;
+  margin: 0 0 1.25rem;
 }
 
-.foot__note {
+/* Full-height touch targets: these are tapped one-handed, so they sit above
+   the 44px minimum rather than at the header's tighter button size. */
+.take .btn {
+  padding: 0.6875rem 1rem;
+  font-size: 0.875rem;
+}
+
+.take .btn svg {
+  width: 1.125em;
+  height: 1.125em;
+  flex: none;
+}
+
+/* ------------------------------------------------------------------ caveat */
+
+/* Quiet on purpose. This has to be read once and then live with the reader,
+   so it is set as small print on the same sunk wash the totals use, not as a
+   yellow warning banner shouting on every visit. The icon hangs at the top of
+   the first line and the text flows beside it. */
+.caveat {
   display: flex;
-  align-items: center;
-  gap: 0.375rem;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 2.5rem 0 0;
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--r-sm);
+  background: var(--sunk);
+  color: var(--ink-soft);
   font-size: 0.75rem;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+/* Nudged onto the first line's optical centre: flex-start alone leaves a 14px
+   icon sitting high against 12px text at this line-height. */
+.caveat svg {
+  flex: none;
+  margin-top: 0.125rem;
+}
+
+/* -------------------------------------------------------------------- foot */
+
+/* A bordered card, like the caveat above it, rather than loose things
+   left-aligned in open space.
+
+   Stacked rather than side by side: the shell is a phone-width column, so a
+   button set beside the text leaves it barely 260px and wraps every sentence
+   to three ragged lines. Full width, the text breathes and the button gets an
+   edge to align to. */
+.foot {
+  margin-top: 0.625rem;
+  padding: 0.875rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+/* A heading by role, small print by appearance: it labels the control without
+   announcing itself as a section of the page. */
+.foot__title {
+  margin: 0 0 0.125rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.foot__body {
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
   color: var(--ink-faint);
+  text-wrap: pretty;
 }
 
 .foot__forget {
@@ -1212,6 +1315,7 @@ button.cal__day:focus-visible { z-index: 1; }
   font: inherit;
   font-size: 0.8125rem;
   padding: 0.4375rem 0.75rem;
+  min-height: 2.75rem;
   border-radius: var(--r-md);
   cursor: pointer;
   transition: background 0.15s var(--ease), color 0.15s var(--ease);
@@ -1221,46 +1325,142 @@ button.cal__day:focus-visible { z-index: 1; }
 
 /* ---------------------------------------------------------------- dropzone */
 
-.intro { text-align: center; }
+.upload-layout {
+  display: grid;
+  grid-template-columns: minmax(22rem, 1fr) minmax(24rem, 1.2fr);
+  align-items: stretch;
+  gap: 4.5rem;
+}
 
+.upload-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2rem;
+}
+
+.intro { text-align: left; }
+
+.intro__label {
+  margin: 0 0 0.75rem;
+  color: var(--band-day);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+/* A question deserves more presence than the label it replaced, and the serif
+   gives it a speaking voice against the sans everything else is written in —
+   a real contrast axis, not two sans faces a shade apart. This is the one
+   piece of type on the screen allowed to be a voice rather than a control.
+
+   Retuned for the serif rather than inheriting the sans settings: it carries
+   more weight per stroke, so it drops to a regular weight and gives back most
+   of the negative tracking. Tight spacing that flattered the sans just closes
+   up a serif's counters. */
 .intro__title {
   margin: 0 0 0.5rem;
-  font-size: 1.875rem;
-  font-weight: 620;
-  letter-spacing: -0.024em;
+  font-size: 2.75rem;
+  font-weight: 680;
+  letter-spacing: -0.04em;
+  line-height: 1.04;
   text-wrap: balance;
 }
 
 .intro__sub {
-  margin: 0 auto;
+  margin: 0;
   max-width: 30ch;
   color: var(--ink-soft);
-  font-size: 1rem;
+  font-size: 1.0625rem;
+  line-height: 1.5;
   text-wrap: pretty;
 }
 
+/* ------------------------------------------------------------------- howto */
+
+/* On the month view the caveat is one filled block under a big grid. Here it
+   would be the second filled block in a short column, boxing the dropzone in
+   between two panels of the same weight and costing it the emphasis it needs.
+   So it keeps the icon and the size and gives up the fill: still small print,
+   but no longer competing with the one thing on the screen to press. */
+.shell--center .caveat {
+  margin-top: 0;
+  padding: 0;
+  background: none;
+}
+
+/* One instruction, so prose rather than a numbered list. It prepares you for
+   the dropzone directly below, and shares that box's quiet fill so the two
+   read as one unit: what to bring, then where to put it. */
+.how {
+  margin: 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line-strong);
+  text-align: left;
+}
+
+/* "Först:" carries the order the numbers used to, in a single word. */
+.how__title {
+  margin: 0 0 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.how__body {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.how__body strong { color: var(--ink); font-weight: 600; }
+
 .drop {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  min-height: 13.5rem;
-  padding: 2rem 1.5rem;
-  background: var(--surface);
-  border: 1px dashed var(--line-strong);
+  gap: 0.625rem;
+  min-height: 24rem;
+  padding: 2.5rem 2rem;
+  background: color-mix(in oklab, var(--band-day) 5%, var(--surface));
+  border: 1px solid color-mix(in oklab, var(--band-day) 32%, var(--line));
   border-radius: var(--r-lg);
   cursor: pointer;
   text-align: center;
   transition: border-color 0.18s var(--ease), background 0.18s var(--ease);
 }
 
-.drop:hover { border-color: var(--ink-faint); background: var(--hover-wash); }
+/* The native input stays in the tab order while the surrounding label remains
+   the large visual and pointer target. */
+.drop__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.drop:has(.drop__input:focus-visible) {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.drop:hover {
+  border-color: var(--band-day);
+  background: color-mix(in oklab, var(--band-day) 8%, var(--surface));
+}
 
 .drop--over {
-  border-color: var(--ink);
-  border-style: solid;
-  background: var(--hover-wash);
+  border-color: var(--band-day);
+  background: color-mix(in oklab, var(--band-day) 12%, var(--surface));
 }
 
 .drop--busy { cursor: progress; }
@@ -1268,16 +1468,41 @@ button.cal__day:focus-visible { z-index: 1; }
 .drop__icon {
   display: grid;
   place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  color: var(--ink-faint);
-  margin-bottom: 0.375rem;
+  width: 3rem;
+  height: 3rem;
+  color: var(--band-day);
+  margin-bottom: 0.5rem;
 }
 
 .drop__icon svg { width: 100%; height: 100%; }
 
-.drop__lead { font-size: 1rem; font-weight: 560; }
-.drop__hint { font-size: 0.875rem; color: var(--ink-faint); }
+.drop__lead { font-size: 1.125rem; font-weight: 650; }
+
+.drop__button {
+  min-width: 9rem;
+  margin-top: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-radius: var(--r-md);
+  background: var(--band-day);
+  color: #fff;
+  font-size: 0.9375rem;
+  font-weight: 650;
+  box-shadow: 0 2px 4px oklch(38% 0.085 265 / 0.2);
+  transition: background 0.15s var(--ease), transform 0.1s var(--ease);
+}
+
+.drop:hover .drop__button { background: var(--band-night); }
+.drop:active .drop__button { transform: translateY(1px); }
+.drop__hint { font-size: 0.8125rem; color: var(--ink-faint); }
+
+.upload-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 1rem 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
 
 .spinner {
   width: 1.5rem;
@@ -1306,9 +1531,10 @@ button.cal__day:focus-visible { z-index: 1; }
 .privacy__line {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 0.375rem;
   padding: 0.5rem;
+  min-height: 2.75rem;
   cursor: pointer;
   list-style: none;
   border-radius: var(--r-md);
@@ -1428,8 +1654,48 @@ button.cal__day:focus-visible { z-index: 1; }
 
 /* ------------------------------------------------------------------ mobile */
 
+/* A two-column upload flow only helps when both columns can remain generous.
+   Tablets and narrow browser windows get the same direct reading order as a
+   phone instead of squeezing the headline beside an oversized file panel. */
+@media (max-width: 52rem) {
+  .shell--center {
+    max-width: 34rem;
+    justify-content: flex-start;
+    gap: 1.25rem;
+    padding-top: 2.5rem;
+  }
+
+  .upload-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .upload-copy { display: contents; }
+  .intro { order: 1; }
+  .drop { order: 2; min-height: 14rem; padding: 2rem 1.25rem; }
+  .how { order: 3; }
+
+  .upload-meta {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .privacy__line { justify-content: flex-start; padding-inline: 0; }
+}
+
 @media (max-width: 40rem) {
   .shell { padding: 1.25rem 1rem 3rem; }
+
+  .shell--center {
+    justify-content: flex-start;
+    gap: 1.25rem;
+    padding-top: 2rem;
+  }
+
+  .drop { min-height: 13rem; padding: 1.75rem 1rem; }
+  .intro__title { font-size: 2.25rem; }
+  .intro__sub { font-size: 1rem; }
 
   /* The month is what the header is for; "Schema för" is the first thing to
      give up its width. The chip still names the person, and the button keeps
@@ -1523,7 +1789,9 @@ button.cal__day:focus-visible { z-index: 1; }
   body { background: #fff; }
   .shell { max-width: none; margin: 0; padding: 0; }
 
-  .head, .foot__forget, .privacy, .sheet { display: none !important; }
+  /* The whole footer goes: with the button hidden, its explanation would be a
+     paragraph about a control the paper does not have. */
+  .head, .take, .foot, .privacy, .sheet { display: none !important; }
 
   /* The on-screen title lives in .head, which is hidden above, so the print-
      only heading comes back to title the sheet. */
@@ -1599,5 +1867,16 @@ button.cal__day:focus-visible { z-index: 1; }
   .pass__row:has(.pass__tail) .pass__time,
   .pass__row:has(.pass__tail) .pass__hours { color: #555; }
 
-  .foot { margin-top: 1rem; padding-top: 0.625rem; }
+  /* The caveat matters most on paper: a printed sheet on a noticeboard is the
+     copy most likely to be trusted without a second look. Its wash is dropped
+     with the other background graphics, so it keeps a border instead, and it
+     must not be split across a page break. */
+  .caveat {
+    background: transparent !important;
+    border: 1px solid #999;
+    color: #000;
+    margin-top: 1.25rem;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 }

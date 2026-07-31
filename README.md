@@ -5,6 +5,9 @@ Drop in the monthly schedule PDF, pick your initials, see only your own shifts.
 Everything runs in the browser: the PDF is parsed locally with pdf.js and is
 never uploaded. Deploys as a static site.
 
+Av säkerhets- och prestandaskäl tar appen emot PDF-filer på högst 25 MB och 20
+sidor. Ett månadsschema ska ligga långt under båda gränserna.
+
 ## Utveckling
 
 ```bash
@@ -13,10 +16,12 @@ npm run dev      # http://localhost:5173
 npm run build    # -> dist/
 ```
 
+Node 22.18 eller senare krävs.
+
 ## Tester
 
 ```bash
-npx tsx --test src/*.test.mts
+npm test
 ```
 
 `schedule.test.mts` runs against a real schedule PDF and skips itself if the
