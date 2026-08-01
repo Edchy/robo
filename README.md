@@ -94,9 +94,9 @@ same wording, if you need it for an email or a notice board:
 > någon annan. Appen fungerar även i flygplansläge när sidan väl har laddats.
 >
 > För att du inte ska behöva leta upp PDF-filen varje gång sparas månadens
-> schema och dina initialer i webbläsaren — på din egen enhet. Själva
-> PDF-filen sparas aldrig, och schemat raderas automatiskt när månaden är
-> slut. Trycker du på **Glöm mig** försvinner allt direkt.
+> schema, dina initialer och original-PDF:en i webbläsaren — på din egen
+> enhet. Inget laddas upp. Allt raderas automatiskt när månaden är slut.
+> Trycker du på **Glöm mig** försvinner allt direkt.
 >
 > Tänk på att PDF-filen innehåller *hela* arbetsplatsens schema, precis som när
 > du får den via mejl. Appen visar bara dina pass — men filen i sig är

@@ -127,6 +127,12 @@ body {
 .head > :first-child { justify-self: start; }
 .head > :last-child { justify-self: end; }
 
+.head__files {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
 /* The month is the page's heading, so it carries the weight the standalone
    h1 used to — the header is a title bar, not a row of small print. */
 .head__title {
@@ -191,6 +197,23 @@ body {
 .btn:active {
   background: var(--pressed-wash);
   box-shadow: none;
+}
+
+.btn--source {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.btn--source:hover {
+  border-color: var(--ink);
+  background: var(--ink-soft);
+  color: var(--surface);
+}
+
+.btn--source svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 /* Each person's hue is handed in as --person by a `p0`…`p13` class, so the
@@ -1267,6 +1290,26 @@ button.cal__day:focus-visible { z-index: 1; }
   margin-top: 0.125rem;
 }
 
+.caveat__action {
+  appearance: none;
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+.caveat__action:hover {
+  text-decoration-thickness: 2px;
+}
+
 /* -------------------------------------------------------------------- foot */
 
 /* A bordered card, like the caveat above it, rather than loose things
@@ -1679,6 +1722,14 @@ button.cal__day:focus-visible { z-index: 1; }
 
 @media (max-width: 40rem) {
   .shell { padding: 1.25rem 1rem 3rem; }
+
+  .head {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .btn--source span {
+    display: none;
+  }
 
   .shell--center {
     justify-content: flex-start;

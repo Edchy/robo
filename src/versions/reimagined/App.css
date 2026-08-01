@@ -74,6 +74,16 @@ button {
   color: inherit;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 button:focus-visible,
 summary:focus-visible,
 label:has(input:focus-visible) {
@@ -295,6 +305,13 @@ svg {
   padding-top: 0.5rem;
 }
 
+.welcome-caveat {
+  padding: 1rem;
+  border-radius: 10px;
+  background: var(--raised-surface);
+  color: var(--ink-soft);
+}
+
 .caveat {
   display: flex;
   max-width: 34rem;
@@ -311,20 +328,28 @@ svg {
 }
 
 .privacy {
-  max-width: 34rem;
+  width: min(100%, 34rem);
   color: var(--ink-soft);
   font-size: 0.8125rem;
 }
 
 .privacy summary {
   display: flex;
+  width: 100%;
   align-items: center;
-  justify-content: flex-end;
   gap: 0.45rem;
   min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 9px;
+  background: var(--raised-surface);
   cursor: pointer;
   font-weight: 650;
   list-style: none;
+  transition: background-color 160ms var(--ease-out);
+}
+
+.privacy summary:hover {
+  background: oklch(91.5% 0.018 245);
 }
 
 .privacy summary::-webkit-details-marker {
@@ -332,7 +357,16 @@ svg {
 }
 
 .privacy[open] {
-  width: 100%;
+  width: min(100%, 34rem);
+}
+
+.privacy__chevron {
+  margin-left: auto;
+  transition: transform 180ms var(--ease-out);
+}
+
+.privacy[open] .privacy__chevron {
+  transform: rotate(180deg);
 }
 
 .privacy__body {
@@ -396,7 +430,8 @@ svg {
 
 .quiet-button,
 .identity-button,
-.new-file-button {
+.new-file-button,
+.original-button {
   appearance: none;
   min-height: 2.75rem;
   cursor: pointer;
@@ -413,7 +448,8 @@ svg {
   color: var(--ink-soft);
 }
 
-.new-file-button {
+.new-file-button,
+.original-button {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
@@ -432,7 +468,19 @@ svg {
   background: var(--surface-muted);
 }
 
-.new-file-button svg {
+.original-button {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.original-button:hover {
+  transform: translateY(-1px);
+  background: oklch(27% 0.032 255);
+}
+
+.new-file-button svg,
+.original-button svg {
   width: 1rem;
   height: 1rem;
 }
@@ -540,9 +588,6 @@ svg {
 }
 
 .app-bar {
-  position: sticky;
-  z-index: 20;
-  top: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -762,51 +807,42 @@ svg {
 }
 
 .schedule-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-  margin-top: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
 }
 
 .schedule-actions button {
   appearance: none;
-  display: flex;
-  min-height: 4.75rem;
+  display: inline-flex;
+  min-height: 2.75rem;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border: 0;
-  border-radius: 11px;
-  background: var(--raised-surface);
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--surface);
   cursor: pointer;
-  text-align: left;
-  transition: background-color 160ms var(--ease-out),
-    transform 160ms var(--ease-out);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out);
 }
 
 .schedule-actions button:hover {
-  transform: translateY(-2px);
-  background: oklch(91.5% 0.018 245);
+  border-color: var(--ink-soft);
+  background: var(--surface-muted);
 }
 
 .schedule-actions button > svg {
-  width: 1.4rem;
-  height: 1.4rem;
+  width: 1rem;
+  height: 1rem;
   flex: 0 0 auto;
-}
-
-.schedule-actions button span {
-  display: flex;
-  flex-direction: column;
-}
-
-.schedule-actions strong {
-  font-size: 0.9375rem;
-}
-
-.schedule-actions small {
-  color: var(--ink-muted);
-  font-size: 0.75rem;
 }
 
 /* The month is an overview, not the main answer. It sits below the next-shift
@@ -874,8 +910,11 @@ svg {
 }
 
 .calendar-cell--empty {
-  display: block;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
   padding: 0.5rem;
+  border: 1px solid var(--line);
   background: transparent;
   color: oklch(62% 0.014 250);
 }
@@ -1292,6 +1331,26 @@ svg {
   padding: 1rem 0;
 }
 
+.caveat__action {
+  appearance: none;
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: inherit;
+  font-weight: 750;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+.caveat__action:hover {
+  text-decoration-thickness: 2px;
+}
+
 .account-footer {
   display: flex;
   align-items: flex-end;
@@ -1510,27 +1569,45 @@ svg {
 }
 
 @media (max-width: 760px) {
-  .welcome-grid,
   .picker-stage {
     grid-template-columns: 1fr;
   }
 
   .welcome-grid {
-    gap: 3rem;
-    padding-block: 4rem 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding-block: 2rem 1.5rem;
+  }
+
+  .welcome-copy {
+    display: contents;
+  }
+
+  .welcome-copy h1 {
+    order: 1;
+  }
+
+  .welcome-lead {
+    order: 2;
+  }
+
+  .file-dock {
+    width: 100%;
+    order: 3;
+    min-height: 15rem;
+    margin-top: 1.5rem;
+  }
+
+  .welcome-help {
+    order: 4;
+    margin-top: 2.5rem;
   }
 
   .welcome-copy h1 {
     max-width: 12ch;
     font-size: 3.75rem;
-  }
-
-  .file-dock {
-    min-height: 25rem;
-  }
-
-  .welcome-help {
-    margin-top: 2.5rem;
   }
 
   .welcome-notes {
@@ -1569,7 +1646,7 @@ svg {
   }
 
   .welcome-grid {
-    padding-top: 3.5rem;
+    padding-top: 1.5rem;
   }
 
   .welcome-copy h1 {
@@ -1581,11 +1658,32 @@ svg {
   }
 
   .file-dock {
-    min-height: 22rem;
+    min-height: 13.5rem;
+    padding: 1rem;
+  }
+
+  .file-dock__icon {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .file-dock__format,
+  .file-dock__hint {
+    display: none;
   }
 
   .file-dock__title {
-    font-size: 2.125rem;
+    max-width: none;
+    margin: 0.9rem 0;
+    font-size: 1.5rem;
+  }
+
+  .file-dock__button {
+    min-height: 3rem;
+  }
+
+  .file-dock__privacy {
+    margin-top: 0.65rem;
   }
 
   .simple-bar {
@@ -1638,17 +1736,7 @@ svg {
   }
 
   .schedule-actions {
-    grid-template-columns: 1fr;
     margin-inline: 0;
-  }
-
-  .schedule-actions button {
-    min-height: 4.25rem;
-    padding-inline: 0.75rem;
-  }
-
-  .schedule-actions small {
-    display: none;
   }
 
   .month-section {
@@ -1791,6 +1879,11 @@ svg {
     justify-content: center;
   }
 
+  .original-button {
+    flex: 1.2;
+    justify-content: center;
+  }
+
   .next-shift {
     margin-inline: -0.75rem;
     padding-inline: 0.75rem;
@@ -1836,17 +1929,28 @@ svg {
   }
 
   .schedule-actions {
-    margin-inline: 0;
+    justify-content: stretch;
   }
 
   .schedule-actions button {
-    min-height: 3.75rem;
+    flex: 1;
   }
 
   .glance-counts {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.65rem 1rem;
+  }
+
+  .glance-counts div {
+    display: grid;
+    grid-template-columns: 2ch minmax(0, 1fr);
+    gap: 0.4rem;
+  }
+
+  .glance-counts dd {
+    min-width: 2ch;
+    text-align: right;
   }
 
   .month-calendar {

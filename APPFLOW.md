@@ -87,7 +87,8 @@ Instead:
 3. A PDF worker extracts text and positioning.
 4. The schedule parser reconstructs the dates, rows, times and initials.
 5. The app validates that every day has staff coverage.
-6. The raw PDF data is released from memory when parsing finishes.
+6. A local copy of the original PDF is kept in the browser so the user can
+   compare the interpreted schedule with its source.
 
 The app rejects:
 
@@ -110,7 +111,8 @@ After a valid PDF has been parsed, the app stores two things in the browser's
 - The parsed monthly schedule.
 - The selected person's initials.
 
-The original PDF file is not stored by the app.
+The original PDF file is stored separately in the browser's `IndexedDB`. This
+makes the source available from the schedule view without sending it anywhere.
 
 The parsed schedule still contains workplace information needed to change
 people and calculate shifts. It must therefore be treated as sensitive
@@ -141,6 +143,7 @@ React filters the parsed schedule locally and renders:
 - Sleep and jour distinctions.
 - A calendar overview.
 - Individual shift details.
+- The original PDF in a local page-and-zoom viewer for comparison.
 - Relevant co-worker initials.
 
 Changing person does not contact a server. The browser already contains the
@@ -222,4 +225,3 @@ User's browser
 ```
 
 No schedule PDF travels back up that connection.
-

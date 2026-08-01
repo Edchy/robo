@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { readSchedulePdf } from '../../pdf';
+import OriginalPdfView from '../../OriginalPdfView';
 import { downloadIcs } from '../../ics';
 import {
   alongsideOn,
@@ -24,6 +25,7 @@ import {
   saveMe,
   saveSchedule,
 } from '../../storage';
+import { clearPdfFile, loadPdfFile, savePdfFile } from '../../pdf-storage';
 import './App.css';
 
 type TimeBand = 'morning' | 'day' | 'evening' | 'night' | 'long';
@@ -80,11 +82,19 @@ export default function App() {
   const [me, setMe] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     const remembered = loadMe();
     setMe(remembered === 'XX' ? null : remembered);
     setSchedule(loadSchedule());
+    void loadPdfFile().then((file) => {
+      if (!cancelled) setPdfFile(file);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const choosePerson = (code: string) => {
@@ -108,7 +118,9 @@ export default function App() {
         );
       }
       setSchedule(parsed);
+      setPdfFile(file);
       saveSchedule(parsed);
+      void savePdfFile(file, parsed);
       const saved = loadMe();
       setMe(saved && saved !== 'XX' && parsed.people.includes(saved) ? saved : null);
     } catch (e) {
@@ -132,7 +144,12 @@ export default function App() {
       <PersonPicker
         schedule={schedule}
         onPick={choosePerson}
-        onBack={() => setSchedule(null)}
+        onBack={() => {
+          clearSchedule();
+          void clearPdfFile();
+          setPdfFile(null);
+          setSchedule(null);
+        }}
       />
     );
   }
@@ -141,14 +158,23 @@ export default function App() {
     <ScheduleView
       schedule={schedule}
       me={me}
+      pdfFile={pdfFile}
+      onPdfFile={(file) => {
+        setPdfFile(file);
+        void savePdfFile(file, schedule);
+      }}
       onChangePerson={() => setMe(null)}
       onNewFile={() => {
         clearSchedule();
+        void clearPdfFile();
+        setPdfFile(null);
         setSchedule(null);
         setError(null);
       }}
       onForget={() => {
         forgetAll();
+        void clearPdfFile();
+        setPdfFile(null);
         setMe(null);
         setSchedule(null);
         setError(null);
@@ -256,14 +282,14 @@ function Dropzone({
       )}
 
       <div className="welcome-notes">
-        <p className="caveat" role="note">
+        <p className="caveat welcome-caveat" role="note">
           <AlertIcon />
           <span>Ta alltid en snabb koll mot originalet. PDF:er kan ibland läsas fel.</span>
         </p>
 
         <details className="privacy">
           <summary>
-            <LockIcon /> Hur funkar det utan uppladdning?
+            <LockIcon /> Vad sparas på enheten? <ChevronDownIcon />
           </summary>
           <div className="privacy__body">
             <p>
@@ -271,9 +297,9 @@ function Dropzone({
               ingenstans, och sidan fungerar utan internet när den väl har laddats.
             </p>
             <p>
-              Det tolkade månadsschemat och dina initialer sparas i den här
-              webbläsaren, så att du slipper börja om. Själva PDF-filen sparas
-              aldrig. Allt försvinner när månaden är slut eller om du väljer
+              PDF-filen, det tolkade månadsschemat och dina initialer sparas i
+              den här webbläsaren, så att du kan öppna originalet och slipper
+              börja om. Allt försvinner när månaden är slut eller om du väljer
               <strong> Glöm mig</strong>.
             </p>
             <p>
@@ -338,12 +364,16 @@ function PersonPicker({
 function ScheduleView({
   schedule,
   me,
+  pdfFile,
+  onPdfFile,
   onChangePerson,
   onNewFile,
   onForget,
 }: {
   schedule: Schedule;
   me: string;
+  pdfFile: File | null;
+  onPdfFile: (file: File) => void;
   onChangePerson: () => void;
   onNewFile: () => void;
   onForget: () => void;
@@ -355,6 +385,13 @@ function ScheduleView({
   );
   const now = useMemo(() => new Date(), []);
   const [openDay, setOpenDay] = useState<number | null>(null);
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const pdfInput = useRef<HTMLInputElement>(null);
+
+  const openOriginal = () => {
+    if (pdfFile) setPdfOpen(true);
+    else pdfInput.current?.click();
+  };
 
   const byDay = useMemo(() => {
     const map = new Map<number, Shift[]>();
@@ -390,6 +427,24 @@ function ScheduleView({
       <header className="app-bar">
         <h1 className="app-month">{schedule.monthLabel}</h1>
         <div className="app-bar__actions">
+          <input
+            ref={pdfInput}
+            className="visually-hidden"
+            type="file"
+            accept="application/pdf,.pdf"
+            aria-label="Välj original-PDF"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                onPdfFile(file);
+                setPdfOpen(true);
+              }
+              event.target.value = '';
+            }}
+          />
+          <button className="original-button" onClick={openOriginal}>
+            <CompareIcon /> Se PDF
+          </button>
           <button className="new-file-button" onClick={onNewFile}>
             <DocIcon /> Byt schema
           </button>
@@ -416,25 +471,6 @@ function ScheduleView({
         personColors={personColors}
         onOpenDay={setOpenDay}
       />
-
-      {shifts.length > 0 && (
-        <section className="schedule-actions" aria-label="Ta med schemat">
-          <button onClick={() => downloadIcs(me, shifts, schedule.monthLabel)}>
-            <CalendarIcon />
-            <span>
-              <strong>Ladda ner kalenderfil</strong>
-              <small>Öppna den för att lägga till passen</small>
-            </span>
-          </button>
-          <button onClick={() => window.print()}>
-            <PrintIcon />
-            <span>
-              <strong>Skriv ut</strong>
-              <small>Hela månaden</small>
-            </span>
-          </button>
-        </section>
-      )}
 
       <MonthCalendar
         schedule={schedule}
@@ -474,11 +510,27 @@ function ScheduleView({
 
       <MonthTotals totals={totals} />
 
+      {shifts.length > 0 && (
+        <section className="schedule-actions" aria-label="Ta med schemat">
+          <button onClick={() => downloadIcs(me, shifts, schedule.monthLabel)}>
+            <DownloadIcon />
+            <span>Kalender</span>
+          </button>
+          <button onClick={() => window.print()}>
+            <PrintIcon />
+            <span>Skriv ut</span>
+          </button>
+        </section>
+      )}
+
       <p className="caveat app-caveat" role="note">
         <AlertIcon />
         <span>
           Schemat läses automatiskt ur PDF-filen och kan bli fel. Stäm alltid av
-          tiderna mot originalet innan du planerar efter ett pass.
+          tiderna mot originalet innan du planerar efter ett pass.{' '}
+          <button className="caveat__action" onClick={openOriginal}>
+            Öppna originalet
+          </button>
         </span>
       </p>
 
@@ -486,8 +538,8 @@ function ScheduleView({
         <div>
           <h2 id="forget-title">Sparat på den här enheten</h2>
           <p>
-            Initialerna och månadens tolkade schema ligger i webbläsaren. Ingen
-            fil har laddats upp.
+            Initialerna, månadens tolkade schema och original-PDF:en ligger i
+            webbläsaren. Ingenting har laddats upp.
           </p>
         </div>
         <button onClick={onForget}>Glöm mig</button>
@@ -510,6 +562,15 @@ function ScheduleView({
           }
           onNavigate={setOpenDay}
           onClose={() => setOpenDay(null)}
+        />
+      )}
+
+      {pdfFile && (
+        <OriginalPdfView
+          file={pdfFile}
+          highlight={me}
+          open={pdfOpen}
+          onClose={() => setPdfOpen(false)}
         />
       )}
     </main>
@@ -1052,10 +1113,11 @@ const DocIcon = () => (
   </svg>
 );
 
-const CalendarIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
-    <rect x="3" y="5" width="18" height="16" rx="2" />
-    <path d="M3 10h18M8 3v4M16 3v4" strokeLinecap="round" />
+const CompareIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M14 3v5h5" />
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" />
+    <path d="M8 13h8M8 17h5" />
   </svg>
 );
 
@@ -1063,6 +1125,14 @@ const PrintIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
     <path d="M7 9V3h10v6M7 19H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2" strokeLinecap="round" strokeLinejoin="round" />
     <rect x="7" y="15" width="10" height="6" rx="1" />
+  </svg>
+);
+
+const DownloadIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 3v11" />
+    <path d="m8 10 4 4 4-4" />
+    <path d="M5 16v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" />
   </svg>
 );
 
@@ -1095,6 +1165,12 @@ const AlertIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
     <circle cx="12" cy="12" r="9" />
     <path d="M12 7.5v5.5M12 16.5h.01" strokeLinecap="round" />
+  </svg>
+);
+
+const ChevronDownIcon = () => (
+  <svg className="privacy__chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m3.5 6 4.5 4 4.5-4" />
   </svg>
 );
 

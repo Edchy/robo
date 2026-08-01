@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { readSchedulePdf } from '../../pdf';
+import OriginalPdfView from '../../OriginalPdfView';
 import { downloadIcs } from '../../ics';
 import {
   formatHours,
@@ -23,6 +24,7 @@ import {
   saveMe,
   saveSchedule,
 } from '../../storage';
+import { clearPdfFile, loadPdfFile, savePdfFile } from '../../pdf-storage';
 import './App.css';
 
 export default function App() {
@@ -30,12 +32,20 @@ export default function App() {
   const [me, setMe] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
 
   // Restore the last month so the PDF need not be dropped again. Anything
   // expired or unreadable is cleared by loadSchedule itself.
   useEffect(() => {
+    let cancelled = false;
     setMe(loadMe());
     setSchedule(loadSchedule());
+    void loadPdfFile().then((file) => {
+      if (!cancelled) setPdfFile(file);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const choosePerson = (code: string) => {
@@ -62,7 +72,9 @@ export default function App() {
         );
       }
       setSchedule(parsed);
+      setPdfFile(file);
       saveSchedule(parsed);
+      void savePdfFile(file, parsed);
       // Keep a remembered person only if they appear in this month's file.
       const saved = loadMe();
       setMe(saved && parsed.people.includes(saved) ? saved : null);
@@ -86,7 +98,12 @@ export default function App() {
       <PersonPicker
         schedule={schedule}
         onPick={choosePerson}
-        onBack={() => setSchedule(null)}
+        onBack={() => {
+          clearSchedule();
+          void clearPdfFile();
+          setPdfFile(null);
+          setSchedule(null);
+        }}
       />
     );
   }
@@ -94,11 +111,18 @@ export default function App() {
     <MonthView
       schedule={schedule}
       me={me}
+      pdfFile={pdfFile}
+      onPdfFile={(file) => {
+        setPdfFile(file);
+        void savePdfFile(file, schedule);
+      }}
       onChangePerson={() => setMe(null)}
       onNewFile={() => {
         // Drop the cache as well, or a refresh would bring back the month the
         // user just dismissed.
         clearSchedule();
+        void clearPdfFile();
+        setPdfFile(null);
         setSchedule(null);
         setError(null);
       }}
@@ -106,6 +130,8 @@ export default function App() {
         // Remove everything stored on the device, so a shared phone is left
         // with nothing of this user.
         forgetAll();
+        void clearPdfFile();
+        setPdfFile(null);
         setMe(null);
         setSchedule(null);
         setError(null);
@@ -236,10 +262,10 @@ function Dropzone({
             internet.
           </p>
           <p>
-            Så att du slipper leta upp filen varje gång sparas månadens schema
-            och dina initialer i webbläsaren, på din egen enhet. Själva
-            PDF-filen sparas aldrig. Det sparade schemat försvinner av sig
-            självt när månaden är slut, och trycker du på{' '}
+            PDF-filen, månadens schema och dina initialer sparas i webbläsaren,
+            på din egen enhet. Då kan du öppna originalet utan att leta upp
+            filen igen. Allt försvinner av sig självt när månaden är slut, och
+            trycker du på{' '}
             <strong>Glöm mig</strong>{' '}
             försvinner allt direkt.
           </p>
@@ -506,12 +532,16 @@ function DayDialog({
 function MonthView({
   schedule,
   me,
+  pdfFile,
+  onPdfFile,
   onChangePerson,
   onNewFile,
   onForget,
 }: {
   schedule: Schedule;
   me: string;
+  pdfFile: File | null;
+  onPdfFile: (file: File) => void;
   onChangePerson: () => void;
   onNewFile: () => void;
   onForget: () => void;
@@ -563,13 +593,40 @@ function MonthView({
   // Which day's detail is open. Null is closed; the day number is enough,
   // since the shifts are looked up from byDay on render.
   const [openDay, setOpenDay] = useState<number | null>(null);
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const pdfInput = useRef<HTMLInputElement>(null);
+
+  const openOriginal = () => {
+    if (pdfFile) setPdfOpen(true);
+    else pdfInput.current?.click();
+  };
 
   return (
     <main className="shell">
       <header className="head">
-        <button className="btn" onClick={onNewFile} aria-label="Läs in ny PDF-fil">
-          <span aria-hidden="true">←</span> PDF
-        </button>
+        <span className="head__files">
+          <button className="btn" onClick={onNewFile} aria-label="Läs in ny PDF-fil">
+            <span aria-hidden="true">←</span> PDF
+          </button>
+          <input
+            ref={pdfInput}
+            className="drop__input"
+            type="file"
+            accept="application/pdf,.pdf"
+            aria-label="Välj original-PDF"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                onPdfFile(file);
+                setPdfOpen(true);
+              }
+              event.target.value = '';
+            }}
+          />
+          <button className="btn btn--source" onClick={openOriginal}>
+            <DocIcon /> <span>Se PDF</span>
+          </button>
+        </span>
         {/* The month sits between the two controls: the thing you are looking
             at, flanked by the two ways to change it. */}
         <h1 className="head__title">{schedule.monthLabel}</h1>
@@ -960,7 +1017,10 @@ function MonthView({
           en hjälp, inte som facit. Stäm alltid av mot den ursprungliga
           PDF-filen innan du planerar efter ett pass, och fråga din chef om
           något ser konstigt ut. Du ansvarar själv för att kontrollera dina
-          tider.
+          tider.{' '}
+          <button className="caveat__action" onClick={openOriginal}>
+            Öppna originalet
+          </button>
         </span>
       </p>
 
@@ -974,15 +1034,24 @@ function MonthView({
             Glöm mig
           </h2>
           <p className="foot__body">
-            Dina initialer och månadens schema ligger sparade i den här
-            webbläsaren. Tar du bort dem börjar du om med att välja fil. Pass du
-            redan lagt in i kalendern påverkas inte.
+            Dina initialer, månadens schema och original-PDF:en ligger sparade
+            i den här webbläsaren. Tar du bort dem börjar du om med att välja
+            fil. Pass du redan lagt in i kalendern påverkas inte.
           </p>
         </div>
         <button className="foot__forget" onClick={onForget}>
           Ta bort mina uppgifter
         </button>
       </footer>
+
+      {pdfFile && (
+        <OriginalPdfView
+          file={pdfFile}
+          highlight={me}
+          open={pdfOpen}
+          onClose={() => setPdfOpen(false)}
+        />
+      )}
     </main>
   );
 }
