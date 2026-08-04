@@ -1224,38 +1224,65 @@ svg {
 }
 
 /*
- * Shifts already finished. Faded as a whole row rather than by recolouring the
- * text, because the band colours are the loudest thing in it and would
- * otherwise keep the past as vivid as the week ahead.
- *
- * Deliberately still legible — the month is a record as well as a plan, and
- * people check what they worked. 0.55 keeps the times readable while letting
- * the eye skip straight to what has not happened yet.
+ * Days already worked, folded away. Closed by default: the page is for what is
+ * coming, and late in the month the finished days outnumber the rest several to
+ * one. Inside, the rows are ordinary day rows at full strength — once you have
+ * asked to see them, dimming them would be contrary.
  */
-.day-row--past {
-  opacity: 0.55;
+.past-days {
+  margin-bottom: 0.75rem;
 }
 
-/* Full strength on interaction: if you are reaching for it, you want to read
-   it. Today never fades even once its shifts are done — the outline marking it
-   would otherwise sit on a greyed row and read as a rendering fault. */
-.day-row--past:hover,
-.day-row--past:focus-visible,
-.day-row--past.day-row--today {
-  opacity: 1;
+.past-days summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: var(--raised-surface);
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 0.9375rem;
+  font-weight: 680;
+  list-style: none;
+  transition: background-color 160ms var(--ease-out);
 }
 
-@media (prefers-reduced-transparency: reduce) {
-  .day-row--past {
-    opacity: 1;
-  }
+/* Safari draws its own triangle through ::-webkit-details-marker. */
+.past-days summary::-webkit-details-marker {
+  display: none;
+}
+
+.past-days summary:hover {
+  background: oklch(91.5% 0.018 245);
+}
+
+.past-days summary svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: 0 0 auto;
+  transition: transform 200ms var(--ease-out);
+}
+
+.past-days[open] summary {
+  margin-bottom: 0.75rem;
+}
+
+.past-days[open] summary svg {
+  transform: rotate(180deg);
 }
 
 @media print {
-  /* Printouts outlive the moment they were made; a faded half would only look
-     like a bad print. */
-  .day-row--past {
-    opacity: 1;
+  /* Paper has no disclosure, and a printout of half the month would be a poor
+     record. `content-visibility: visible` forces a closed <details> to render
+     its contents; without it the browser prints only the summary. */
+  .past-days summary {
+    display: none;
+  }
+
+  .past-days > *:not(summary) {
+    content-visibility: visible !important;
   }
 }
 

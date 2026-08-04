@@ -455,8 +455,27 @@ function ScheduleView({
     () => [...byDay.entries()].sort((a, b) => a[0] - b[0]),
     [byDay]
   );
+  // Prev/next in the day sheet still walks the whole month, past days included:
+  // once a day is open, stepping back into yesterday is the obvious move.
   const browsableDays = useMemo(() => groups.map(([day]) => day), [groups]);
   const openDayIndex = openDay === null ? -1 : browsableDays.indexOf(openDay);
+
+  /**
+   * The ledger split. A day is done once its last shift has actually finished,
+   * not at midnight — a night ending 08:00 is still the shift you are on at
+   * 03:00, and filing it under "som varit" then would be wrong.
+   */
+  const [pastGroups, upcomingGroups] = useMemo(() => {
+    const past: typeof groups = [];
+    const upcoming: typeof groups = [];
+    for (const group of groups) {
+      const done = group[1].every(
+        (shift) => shiftBounds(schedule, shift).end <= now
+      );
+      (done ? past : upcoming).push(group);
+    }
+    return [past, upcoming];
+  }, [groups, now, schedule]);
 
   const nextShift = useMemo(
     () =>
@@ -536,29 +555,61 @@ function ScheduleView({
         {groups.length === 0 ? (
           <p className="empty-state">Du har inga pass den här månaden.</p>
         ) : (
-          <div className="day-ledger">
-            {groups.map(([day, dayShifts]) => (
-              <DayRow
-                key={day}
-                day={day}
-                dayShifts={dayShifts}
-                allShifts={shifts}
-                schedule={schedule}
-                isToday={
-                  now.getFullYear() === schedule.year &&
-                  now.getMonth() + 1 === schedule.month &&
-                  now.getDate() === day
-                }
-                // Past once the day's last shift has actually finished, not at
-                // midnight: a night ending 08:00 is still the shift you are on
-                // at 03:00, and fading it then would be a lie.
-                isPast={dayShifts.every(
-                  (shift) => shiftBounds(schedule, shift).end <= now
-                )}
-                onOpen={() => setOpenDay(day)}
-              />
-            ))}
-          </div>
+          <>
+            {/* Days already worked are folded away rather than listed. What the
+                page is for is what comes next, and by the end of the month the
+                finished days outnumbered the remaining ones several to one.
+                They stay reachable — the month is a record as well as a plan,
+                and people do check what they worked. */}
+            {pastGroups.length > 0 && (
+              // Open when the month is over and there is nothing else to show,
+              // so the section is never a lone collapsed bar with the list it
+              // belongs to nowhere in sight.
+              <details className="past-days" open={upcomingGroups.length === 0}>
+                <summary>
+                  <span className="past-days__label">
+                    {pastGroups.length} {pastGroups.length === 1 ? 'dag' : 'dagar'} som varit
+                  </span>
+                  <ChevronDownIcon />
+                </summary>
+                <div className="day-ledger past-days__list">
+                  {pastGroups.map(([day, dayShifts]) => (
+                    <DayRow
+                      key={day}
+                      day={day}
+                      dayShifts={dayShifts}
+                      allShifts={shifts}
+                      schedule={schedule}
+                      isToday={false}
+                      onOpen={() => setOpenDay(day)}
+                    />
+                  ))}
+                </div>
+              </details>
+            )}
+
+            {/* No "nothing left" message when this is empty: the next-shift
+                card at the top of the page already says so, in larger type. */}
+            {upcomingGroups.length > 0 && (
+              <div className="day-ledger">
+                {upcomingGroups.map(([day, dayShifts]) => (
+                  <DayRow
+                    key={day}
+                    day={day}
+                    dayShifts={dayShifts}
+                    allShifts={shifts}
+                    schedule={schedule}
+                    isToday={
+                      now.getFullYear() === schedule.year &&
+                      now.getMonth() + 1 === schedule.month &&
+                      now.getDate() === day
+                    }
+                    onOpen={() => setOpenDay(day)}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </section>
 
@@ -915,7 +966,6 @@ function DayRow({
   allShifts,
   schedule,
   isToday,
-  isPast,
   onOpen,
 }: {
   day: number;
@@ -923,7 +973,6 @@ function DayRow({
   allShifts: Shift[];
   schedule: Schedule;
   isToday: boolean;
-  isPast: boolean;
   onOpen: () => void;
 }) {
   const spoken = dayShifts
@@ -932,9 +981,7 @@ function DayRow({
 
   return (
     <button
-      className={`day-row ${isToday ? 'day-row--today' : ''} ${
-        isPast ? 'day-row--past' : ''
-      }`}
+      className={`day-row ${isToday ? 'day-row--today' : ''}`}
       onClick={onOpen}
       aria-label={`${dayShifts[0].weekday} ${day} ${MONTHS[schedule.month - 1]}. ${spoken}`}
     >
