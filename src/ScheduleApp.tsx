@@ -722,14 +722,28 @@ function MonthCalendar({
   return (
     <section className="month-glance" aria-label="Månaden i överblick">
       <header className="section-head month-glance__head">
+        {/* Nights and jour appear only when there are some. "0 jour" is not a
+            fact worth a slot — it is the absence of one, and it reads as
+            something to check rather than something to skip. Pass and
+            arbetsdagar always show: a zero there is the month telling you
+            something, not an empty category. */}
         <dl className="glance-counts" aria-label="Sammanfattning av månaden">
           <div><dt>pass</dt><dd>{workShifts.length}</dd></div>
-          <div><dt>arbetsdagar</dt><dd>{workdays.size}</dd></div>
-          <div>
-            <dt>{nightShifts.length === 1 ? 'natt' : 'nätter'}</dt>
-            <dd>{nightShifts.length}</dd>
-          </div>
-          <div><dt>jour</dt><dd>{jourStarts.length}</dd></div>
+          {/* Arbetsdagar and nätter show on desktop only. Below that, four
+              counts wrapped into an uneven block that cost more room than it
+              earned. Both are countable off the calendar directly below; pass
+              is the one figure that is not, and jour is the one people ask
+              about. See `.glance-counts__wide`. */}
+          <div className="glance-counts__wide"><dt>arbetsdagar</dt><dd>{workdays.size}</dd></div>
+          {nightShifts.length > 0 && (
+            <div className="glance-counts__wide">
+              <dt>{nightShifts.length === 1 ? 'natt' : 'nätter'}</dt>
+              <dd>{nightShifts.length}</dd>
+            </div>
+          )}
+          {jourStarts.length > 0 && (
+            <div><dt>jour</dt><dd>{jourStarts.length}</dd></div>
+          )}
         </dl>
       </header>
 
