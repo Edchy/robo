@@ -699,6 +699,9 @@ function MonthCalendar({
 }) {
   const first = new Date(Date.UTC(schedule.year, schedule.month - 1, 1));
   const lead = (first.getUTCDay() + 6) % 7;
+  // Midnight today, for dating the cells that hold no shifts and so have no
+  // end time of their own to compare against.
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const workShifts = shifts.filter(
     (shift) => shift.kind === 'work' && !isContinuation(shift, shifts)
   );
@@ -757,13 +760,21 @@ function MonthCalendar({
             now.getFullYear() === schedule.year &&
             now.getMonth() + 1 === schedule.month &&
             now.getDate() === day;
+          // Behind you: every shift on the day has finished, or the day itself
+          // is over. The grid keeps all its cells — a month with holes in it
+          // stops being a month — so the past recedes rather than disappears.
+          const isPast = isToday
+            ? false
+            : dayShifts.length > 0
+              ? dayShifts.every((shift) => shiftBounds(schedule, shift).end <= now)
+              : localDate(schedule, day) < today;
 
           if (dayShifts.length === 0) {
             return (
               <span
                 key={day}
                 role="gridcell"
-                className={`calendar-cell calendar-cell--empty ${isToday ? 'calendar-cell--today' : ''}`}
+                className={`calendar-cell calendar-cell--empty ${isToday ? 'calendar-cell--today' : ''} ${isPast ? 'calendar-cell--past' : ''}`}
                 aria-current={isToday ? 'date' : undefined}
               >
                 <span className="calendar-cell__number">{day}</span>
@@ -798,7 +809,7 @@ function MonthCalendar({
             <button
               key={day}
               role="gridcell"
-              className={`calendar-cell calendar-cell--scheduled ${visualBand ? `calendar-cell--${visualBand}` : `calendar-cell--neutral calendar-cell--${hasSleep ? 'sleep' : 'jour'}`} ${isToday ? 'calendar-cell--today' : ''}`}
+              className={`calendar-cell calendar-cell--scheduled ${visualBand ? `calendar-cell--${visualBand}` : `calendar-cell--neutral calendar-cell--${hasSleep ? 'sleep' : 'jour'}`} ${isToday ? 'calendar-cell--today' : ''} ${isPast ? 'calendar-cell--past' : ''}`}
               aria-current={isToday ? 'date' : undefined}
               aria-label={`${scheduleDay.weekday} ${day} ${MONTHS[schedule.month - 1]}. ${spoken}`}
               onClick={() => onOpenDay(day)}

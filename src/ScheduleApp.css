@@ -1084,6 +1084,39 @@ svg {
   outline-offset: 2px;
 }
 
+/*
+ * Days behind you. The grid has to keep every cell — a month with holes in it
+ * stops reading as a month — so the past recedes instead of leaving.
+ *
+ * Not opacity. Fading a coloured cell blends it toward the card behind it,
+ * which turns navy into a muted purple and a night into something that looks
+ * like a *different band* rather than a past one. Colour means time of day and
+ * must not mean anything else, so the band is dropped outright instead: one
+ * neutral grey, obviously outside the scheme rather than a wrong place in it.
+ * The label still names the band for anyone who wants the detail.
+ */
+/* Screen only. Paper is a record rather than a plan, so a printout shows every
+   day in its own band; scoping the greying here is simpler than trying to undo
+   it inside the print block. */
+@media screen {
+  .calendar-cell--past.calendar-cell--scheduled {
+    background: var(--surface-muted);
+    color: var(--ink-muted);
+  }
+
+  .calendar-cell--past.calendar-cell--empty {
+    border-color: var(--line);
+    color: oklch(72% 0.012 250);
+  }
+
+  /* Restore the real band on reach: pointing at a day is asking what it was. */
+  .calendar-cell--past.calendar-cell--scheduled:hover,
+  .calendar-cell--past.calendar-cell--scheduled:focus-visible {
+    background: var(--raised-surface);
+    color: var(--ink);
+  }
+}
+
 .calendar-cell__number {
   font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
@@ -1226,11 +1259,31 @@ svg {
 /*
  * Days already worked, folded away. Closed by default: the page is for what is
  * coming, and late in the month the finished days outnumber the rest several to
- * one. Inside, the rows are ordinary day rows at full strength — once you have
- * asked to see them, dimming them would be contrary.
+ * one.
+ *
+ * Opened, the rows are dimmed. The fade is no longer doing the hiding — the
+ * disclosure does that — so it is free to say something quieter: these are
+ * behind you. It also keeps the boundary legible when the list is open and the
+ * upcoming days sit directly below it at full strength.
  */
 .past-days {
   margin-bottom: 0.75rem;
+}
+
+.past-days__list .day-row {
+  opacity: 0.55;
+}
+
+/* Full strength on reach: if you are pointing at a row you want to read it. */
+.past-days__list .day-row:hover,
+.past-days__list .day-row:focus-visible {
+  opacity: 1;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .past-days__list .day-row {
+    opacity: 1;
+  }
 }
 
 .past-days summary {
@@ -1283,6 +1336,11 @@ svg {
 
   .past-days > *:not(summary) {
     content-visibility: visible !important;
+  }
+
+  /* No dimming on paper: a faded half would only look like a bad print. */
+  .past-days__list .day-row {
+    opacity: 1;
   }
 }
 
