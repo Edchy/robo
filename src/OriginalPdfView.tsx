@@ -75,7 +75,10 @@ export default function OriginalPdfView({
         loaded = pdf;
         if (!cancelled) setDocument(pdf);
       })
-      .catch(() => {
+      .catch((cause: unknown) => {
+        // Same reasoning as in pdf.ts: this fires for a stale worker as readily
+        // as for a bad file, and the message only mentions the file.
+        console.error('[rosenbo] kunde inte visa original-PDF:en', cause);
         if (!cancelled) setError('Kunde inte visa originalfilen. Välj PDF-filen igen.');
       })
       .finally(() => {

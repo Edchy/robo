@@ -22,7 +22,14 @@ export async function readSchedulePdf(file: File): Promise<Schedule> {
   try {
     const data = new Uint8Array(await file.arrayBuffer());
     doc = await pdfjs.getDocument({ data }).promise;
-  } catch {
+  } catch (cause) {
+    // The message below blames the file, but this catch also fires for causes
+    // that have nothing to do with it — most often the worker failing to load,
+    // which happens to a tab left open across a rebuild because the chunk it
+    // remembers no longer exists. That looked exactly like a corrupt PDF and
+    // cost a real debugging session. pdf.js's own error goes to the console so
+    // the next occurrence can be told apart at a glance.
+    console.error('[rosenbo] kunde inte öppna PDF:en', cause);
     throw new ScheduleError('Kunde inte öppna filen. Är det en giltig PDF?');
   }
 
