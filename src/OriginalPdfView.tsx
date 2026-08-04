@@ -35,10 +35,11 @@ export default function OriginalPdfView({
     const previousFocus = window.document.activeElement as HTMLElement | null;
     const panel = closeButton.current?.closest('.original-pdf');
     const shell = panel?.parentElement;
-    const background = [
-      ...Array.from(shell?.children ?? []).filter((element) => element !== panel),
-      ...Array.from(window.document.querySelectorAll('.version-toolbar')),
-    ] as HTMLElement[];
+    // Everything beside the panel goes inert while the viewer is open, so focus
+    // and the screen reader stay inside it.
+    const background = Array.from(shell?.children ?? []).filter(
+      (element) => element !== panel
+    ) as HTMLElement[];
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };

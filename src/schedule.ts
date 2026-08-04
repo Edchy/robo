@@ -126,6 +126,24 @@ const SLEEP_UNTIL = 6 * 60 + 30;
  * So a morning block is jour only when the evening before it was also jour —
  * `startedNight` carries that answer, since only the caller can see the
  * previous day.
+ *
+ * Within the morning that leaves one more cut to make. Line 1 writes the night
+ * as up to two cells, and only the first is jour:
+ *
+ *   Sat 1   00:00–09:00 [LF]                            jour, all of it
+ *   Tue 4   00:00–07:00 [AH]   07:00–08:00 [AH]         AH stays on to work
+ *   Thu 6   00:00–07:00 [KA]   07:00–08:00 [KA/DV]      DV travels in too
+ *
+ * The second cell is the hour or two of real cover before AU takes over at
+ * 08:00, and it is worked on the floor whether the same initials carry over or
+ * a fresh person arrives — the PDF prints the two cases identically, so there
+ * is nothing to tell them apart by and no reason to. Every weekday in August
+ * 2026 has this cell; not one weekend does, since the weekend jour simply runs
+ * to 09:00 unbroken.
+ *
+ * Hence the `start === 0` test: the tail of a night is the cell that begins at
+ * midnight, and anything after it is time awake at work. Without it AH's Aug 4
+ * merges into a single eight-hour jour and an hour of paid work disappears.
  */
 const isStandbyBlock = (
   lineIndex: number,
@@ -136,7 +154,7 @@ const isStandbyBlock = (
   const start = toMin(block.start);
   const end = toMin(block.end);
   if (start >= STANDBY_EVENING_FROM) return true;
-  return end <= STANDBY_MORNING_UNTIL && startedNight;
+  return start === 0 && end <= STANDBY_MORNING_UNTIL && startedNight;
 };
 
 /**
@@ -312,6 +330,12 @@ export const bandOf = (shift: Shift): ShiftBand => {
  * Jour is excluded — someone on call is at home, not beside you — as is AU,
  * which is a placeholder rather than a person. Overlap must be real, so blocks
  * that merely touch at a handover boundary do not count.
+ *
+ * The weekday morning has two people on the floor and both must show: the one
+ * who slept here, on line 0, and whoever covers line 1's short block before AU
+ * takes over at 08:00. `isStandbyBlock` draws that line already — the jour tail
+ * is the cell starting at midnight, the one after it is work — so this function
+ * only has to trust it.
  */
 export const alongsideOn = (
   schedule: Schedule,
@@ -327,9 +351,9 @@ export const alongsideOn = (
 
   day.lines.forEach((line, lineIndex) => {
     for (const b of line.blocks) {
-      // `startedNight` is passed true so a morning block on the jour line is
-      // treated as the tail it usually is. Erring toward "this is jour" is the
-      // safe direction here: the cost is omitting a name, not inventing one.
+      // `startedNight` is passed true so a midnight block on the jour line is
+      // read as the tail it always is. Only that first cell is affected, and on
+      // this line it is never anything else.
       if (isStandbyBlock(lineIndex, b, true)) continue;
       if (toMin(b.end) <= from || toMin(b.start) >= to) continue;
       for (const c of b.codes) {

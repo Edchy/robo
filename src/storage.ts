@@ -20,9 +20,21 @@ type Cached = {
   schedule: Schedule;
 };
 
-/** Last day of the schedule's month, at midnight — the cache dies after this. */
-function expiryOf(schedule: Schedule): Date {
-  // Day 0 of the following month is the last day of this one.
+/**
+ * Midnight after the schedule's month ends — the moment everything cached for
+ * that month becomes stale.
+ *
+ * Exported because the PDF is kept in a different store (IndexedDB, see
+ * `pdf-storage.ts`) and the two must die together. Computing the date twice,
+ * once per file, is how they would drift: the schedule would vanish while the
+ * PDF lingered, and "Se PDF" would offer last month's paper against no
+ * calendar. One rule, one definition, both stores.
+ *
+ * `schedule.month` is 1-12 while `Date` counts months from 0, so passing it
+ * unadjusted lands on the first of the *following* month, which is exactly the
+ * boundary wanted.
+ */
+export function expiryOf(schedule: Schedule): Date {
   return new Date(schedule.year, schedule.month, 1);
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { readSchedulePdf } from '../../pdf';
-import OriginalPdfView from '../../OriginalPdfView';
-import { downloadIcs } from '../../ics';
+import { readSchedulePdf } from './pdf';
+import OriginalPdfView from './OriginalPdfView';
+import { downloadIcs } from './ics';
 import {
   alongsideOn,
   bandOf,
@@ -16,17 +16,11 @@ import {
   ScheduleError,
   type Schedule,
   type Shift,
-} from '../../schedule';
-import {
-  clearSchedule,
-  forgetAll,
-  loadMe,
-  loadSchedule,
-  saveMe,
-  saveSchedule,
-} from '../../storage';
-import { clearPdfFile, loadPdfFile, savePdfFile } from '../../pdf-storage';
-import './App.css';
+} from './schedule';
+import { loadMe, loadSchedule, saveMe, saveSchedule } from './storage';
+import { loadPdfFile, savePdfFile } from './pdf-storage';
+import { forgetEverything } from './session';
+import './ScheduleApp.css';
 
 type TimeBand = 'morning' | 'day' | 'evening' | 'night' | 'long';
 
@@ -83,6 +77,15 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  /**
+   * "Byt schema" was pressed and no replacement has arrived yet.
+   *
+   * The current month deliberately stays in state and on disk throughout: the
+   * user has only said they intend to pick a new file, and until one parses
+   * there is nothing to replace it with. Dropping it eagerly meant a change of
+   * mind cost you the upload, with the PDF gone from IndexedDB too.
+   */
+  const [replacing, setReplacing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,20 +126,41 @@ export default function App() {
       void savePdfFile(file, parsed);
       const saved = loadMe();
       setMe(saved && saved !== 'XX' && parsed.people.includes(saved) ? saved : null);
+      // The replacement landed, so there is nothing left to go back to.
+      setReplacing(false);
     } catch (e) {
       setError(
         e instanceof ScheduleError
           ? e.message
           : 'Något gick fel när filen lästes. Försök igen.'
       );
-      setSchedule(null);
+      // Whatever was loaded before stays loaded. A file that will not parse is
+      // no reason to throw away a month that already works — the error shows
+      // above the dropzone, and "Behåll nuvarande schema" is still there.
     } finally {
       setBusy(false);
     }
   };
 
-  if (!schedule) {
-    return <Dropzone onFile={handleFile} busy={busy} error={error} />;
+  if (!schedule || replacing) {
+    return (
+      <Dropzone
+        onFile={handleFile}
+        busy={busy}
+        error={error}
+        // Only offered when there is genuinely something to go back to. On a
+        // first visit the schedule is null and this stays absent.
+        onCancel={
+          schedule
+            ? () => {
+                setReplacing(false);
+                setError(null);
+              }
+            : undefined
+        }
+        currentMonth={schedule?.monthLabel ?? null}
+      />
+    );
   }
 
   if (!me) {
@@ -144,11 +168,11 @@ export default function App() {
       <PersonPicker
         schedule={schedule}
         onPick={choosePerson}
+        // Back to the dropzone to pick a different file. The loaded month is
+        // kept, so this is reversible too — the same reasoning as "Byt schema".
         onBack={() => {
-          clearSchedule();
-          void clearPdfFile();
-          setPdfFile(null);
-          setSchedule(null);
+          setReplacing(true);
+          setError(null);
         }}
       />
     );
@@ -164,19 +188,18 @@ export default function App() {
         void savePdfFile(file, schedule);
       }}
       onChangePerson={() => setMe(null)}
+      // Nothing is cleared here — the month stays in state and on disk until a
+      // replacement actually parses, so changing your mind is free.
       onNewFile={() => {
-        clearSchedule();
-        void clearPdfFile();
-        setPdfFile(null);
-        setSchedule(null);
+        setReplacing(true);
         setError(null);
       }}
       onForget={() => {
-        forgetAll();
-        void clearPdfFile();
+        void forgetEverything();
         setPdfFile(null);
         setMe(null);
         setSchedule(null);
+        setReplacing(false);
         setError(null);
       }}
     />
@@ -187,24 +210,49 @@ function Dropzone({
   onFile,
   busy,
   error,
+  onCancel,
+  currentMonth,
 }: {
   onFile: (file: File) => void;
   busy: boolean;
   error: string | null;
+  /** Present only when a loaded schedule is waiting to be returned to. */
+  onCancel?: () => void;
+  currentMonth: string | null;
 }) {
   const [over, setOver] = useState(false);
+  const replacing = Boolean(onCancel);
 
   return (
     <main className="welcome-shell">
       <section className="welcome-grid">
         <div className="welcome-copy">
-          <h1>När var det du jobbade nu igen?</h1>
+          {/* Swapping a schedule is a different errand from arriving with none:
+              the explanation is already known, and what matters is which month
+              is about to be replaced and that backing out is possible. */}
+          <h1>{replacing ? 'Byt till ett annat schema' : 'När var det du jobbade nu igen?'}</h1>
           <p className="welcome-lead">
-            Släng in månadens PDF så dyker dina pass upp i en lite mer lättläst
-            version.
+            {replacing ? (
+              <>
+                Välj PDF:en för den nya månaden.{' '}
+                {currentMonth ? <strong>{currentMonth}</strong> : 'Det nuvarande schemat'}{' '}
+                ligger kvar tills den nya är inläst.
+              </>
+            ) : (
+              'Släng in månadens PDF så dyker dina pass upp i en lite mer lättläst version.'
+            )}
           </p>
 
-          <div className="welcome-help">
+          {replacing && (
+            <button className="welcome-back" onClick={onCancel}>
+              <ArrowLeftIcon />
+              <span>Behåll {currentMonth ?? 'nuvarande schema'}</span>
+            </button>
+          )}
+
+          {/* Only for a first visit. Someone on their second month has done
+              this before and does not need the steps again. */}
+          <div className="welcome-help" hidden={replacing}>
             <h2>Har du schemat i mejlet?</h2>
             <p>Gör så här på mobilen:</p>
             <ol className="welcome-steps">
@@ -480,11 +528,11 @@ function ScheduleView({
         onOpenDay={setOpenDay}
       />
 
-      <section className="month-section" aria-labelledby="month-title">
-        <header className="section-head">
-          <h2 id="month-title">Dina tider</h2>
-        </header>
-
+      {/* The visible heading is gone: a list of dated rows under a month
+          calendar needs no label to be understood, and the two headings were
+          mostly separating the page into parts that already read as separate.
+          The name stays on the landmark for anyone navigating by region. */}
+      <section className="month-section" aria-label="Dina tider">
         {groups.length === 0 ? (
           <p className="empty-state">Du har inga pass den här månaden.</p>
         ) : (
@@ -501,6 +549,12 @@ function ScheduleView({
                   now.getMonth() + 1 === schedule.month &&
                   now.getDate() === day
                 }
+                // Past once the day's last shift has actually finished, not at
+                // midnight: a night ending 08:00 is still the shift you are on
+                // at 03:00, and fading it then would be a lie.
+                isPast={dayShifts.every(
+                  (shift) => shiftBounds(schedule, shift).end <= now
+                )}
                 onOpen={() => setOpenDay(day)}
               />
             ))}
@@ -608,13 +662,12 @@ function MonthCalendar({
   const hasSleep = shifts.some((shift) => shift.kind === 'sleep');
   const workdays = workdaysOf(shifts);
 
+  // No heading and no month eyebrow: the app bar already names the month, and a
+  // calendar grid under a row of counts explains itself. The counts now carry
+  // the row on their own.
   return (
-    <section className="month-glance" aria-labelledby="glance-title">
+    <section className="month-glance" aria-label="Månaden i överblick">
       <header className="section-head month-glance__head">
-        <div>
-          <p>{schedule.monthLabel}</p>
-          <h2 id="glance-title">Månaden på en blick</h2>
-        </div>
         <dl className="glance-counts" aria-label="Sammanfattning av månaden">
           <div><dt>pass</dt><dd>{workShifts.length}</dd></div>
           <div><dt>arbetsdagar</dt><dd>{workdays.size}</dd></div>
@@ -807,7 +860,19 @@ function NextShift({
         <div>
           <p className="next-shift__date">{when}</p>
           <h1 id="next-title">
-            {shift.start}<span aria-hidden="true">–</span>{shift.end}
+            {/* The button is stretched over the whole card by CSS rather than
+                wrapping it: the heading has to stay a real <h1> for the page
+                outline, and a <button> may only contain phrasing content. The
+                "Detaljer" link that used to sit in the corner is gone — the
+                sheet it opened shows the same shift this card already does, so
+                it promised more than it delivered while shrinking a card-sized
+                target down to one word. */}
+            <button
+              className="next-shift__open"
+              onClick={() => onOpenDay(shift.dayNum)}
+            >
+              {shift.start}<span aria-hidden="true">–</span>{shift.end}
+            </button>
           </h1>
         </div>
         <TimeIcon band={band} large />
@@ -832,9 +897,9 @@ function NextShift({
             <span>Fortsätter efter midnatt.</span>
           )}
         </div>
-        <button onClick={() => onOpenDay(shift.dayNum)}>
-          Detaljer <ArrowRightIcon />
-        </button>
+        <span className="next-shift__arrow" aria-hidden="true">
+          <ArrowRightIcon />
+        </span>
       </div>
     </section>
   );
@@ -850,6 +915,7 @@ function DayRow({
   allShifts,
   schedule,
   isToday,
+  isPast,
   onOpen,
 }: {
   day: number;
@@ -857,6 +923,7 @@ function DayRow({
   allShifts: Shift[];
   schedule: Schedule;
   isToday: boolean;
+  isPast: boolean;
   onOpen: () => void;
 }) {
   const spoken = dayShifts
@@ -865,7 +932,9 @@ function DayRow({
 
   return (
     <button
-      className={`day-row ${isToday ? 'day-row--today' : ''}`}
+      className={`day-row ${isToday ? 'day-row--today' : ''} ${
+        isPast ? 'day-row--past' : ''
+      }`}
       onClick={onOpen}
       aria-label={`${dayShifts[0].weekday} ${day} ${MONTHS[schedule.month - 1]}. ${spoken}`}
     >

@@ -5,18 +5,9 @@ Drop in the monthly schedule PDF, pick your initials, see only your own shifts.
 Everything runs in the browser: the PDF is parsed locally with pdf.js and is
 never uploaded. Deploys as a static site.
 
-## UI-jämförelse
-
-`main` contains two complete interfaces behind a small test bar:
-
-- **Version A** is the original interface, preserved on `codex/original-ui`.
-- **Version B** is the redesign, preserved on `codex/reimagined-ui`.
-
-Version B opens by default. The test bar links to `?version=a` and `?version=b`.
-Both versions use the same on-device storage, so a colleague can upload the PDF
-and choose their initials once, then switch without starting over. The version
-styles are loaded as separate chunks so their global CSS cannot affect each
-other.
+The interface is `src/ScheduleApp.tsx`. Two were trialled side by side behind a
+`?version=` test bar; the redesign won, and the original is gone from `main` —
+it remains on `codex/original-ui` if it is ever wanted again.
 
 Av säkerhets- och prestandaskäl tar appen emot PDF-filer på högst 25 MB och 20
 sidor. Ett månadsschema ska ligga långt under båda gränserna.
@@ -39,8 +30,8 @@ npm test
 
 `schedule.test.mts` runs against a real schedule PDF and skips itself if the
 file is not present; point it elsewhere with
-`ROSENBO_PDF="/path/to/schema.pdf"`. `storage.test.mts` covers caching and
-expiry and needs nothing.
+`ROSENBO_PDF="/path/to/schema.pdf"`. `storage.test.mts` and `session.test.mts`
+cover caching, expiry and teardown, and need nothing.
 
 ## Export
 
@@ -49,8 +40,8 @@ Two buttons under the shift list, both entirely client-side:
 - **Lägg till i kalendern** downloads an `.ics` file (`src/ics.ts`) that imports
   into Apple Calendar, Google Calendar and Outlook. Night shifts become single
   events spanning midnight, which is precisely what the PDF cannot show.
-- **Skriv ut** calls `window.print()`. Each version's print stylesheet swaps to
-  white, hides the controls, adds the person's initials to the heading and
+- **Skriv ut** calls `window.print()`. The print stylesheet swaps to white,
+  hides the controls, adds the person's initials to the heading and
   keeps shifts from splitting across pages — so "Save as PDF" yields a clean
   sheet without any PDF library in the bundle.
 
@@ -70,18 +61,36 @@ Android and desktop download it directly.
 
 ## Lagring på enheten
 
-Two `localStorage` keys, both on-device only — see `src/storage.ts`:
+Three things are kept, all on-device only, across two stores:
 
-| Key | Contents | Lifetime |
-| --- | --- | --- |
-| `rosenbo.me` | chosen initials, e.g. `"ES"` | until **Glöm mig** |
-| `rosenbo.schedule` | the parsed month (~22 kB JSON) | until the month ends, or **Glöm mig** |
+| Where | Key | Contents | Lifetime |
+| --- | --- | --- | --- |
+| `localStorage` | `rosenbo.me` | chosen initials, e.g. `"ES"` | until **Glöm mig** |
+| `localStorage` | `rosenbo.schedule` | the parsed month (~22 kB JSON) | until the month ends, or **Glöm mig** |
+| `IndexedDB` | `rosenbo-local-files` | the source PDF's bytes | until the month ends, or **Glöm mig** |
 
-The PDF itself is never stored — only the parsed result, so staff need not
-re-drop the file on every visit. `loadSchedule()` deletes the entry once the
-month is over, and also discards anything corrupt or written by an older
-`CACHE_VERSION`. Every access is wrapped so that private browsing or a full
-quota degrades to "ask for the PDF again" instead of breaking.
+**Why two stores** (`src/storage.ts`, `src/pdf-storage.ts`). localStorage is
+synchronous and string-only with a ~5 MB quota — a good fit for the parsed
+month, and reading it synchronously at startup is what lets the calendar paint
+without a loading state. The PDF cannot go there: it is binary and allowed up to
+25 MB, so it lives in IndexedDB, which stores `ArrayBuffer` natively and has a
+far larger quota. The trade is that it loads asynchronously, so **Se PDF** may
+briefly fall back to the file picker on a cold start.
+
+The PDF is stored as **raw bytes, not the `File` object**. A `File` from an
+`<input>` is a handle onto something on disk, and IndexedDB may persist it as
+that handle: it survives a reload looking intact and only fails when something
+finally reads it. On iOS, where the picker copies into a sandbox the OS later
+reclaims, that is the normal outcome.
+
+Both stores expire on one rule — `expiryOf()` in `src/storage.ts`, midnight
+after the schedule's month ends — so they can never disagree about which month
+is current. Clearing likewise goes through `src/session.ts` (`forgetSchedule`,
+`forgetEverything`) rather than being paired by hand at each call site, since
+half a teardown leaves a stale PDF offered against no calendar. `loadSchedule()`
+also discards anything corrupt or written by an older `CACHE_VERSION`, and every
+access is wrapped so private browsing or a full quota degrades to "ask for the
+PDF again" instead of breaking.
 
 ## Information till personalen
 

@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import type { Schedule } from './schedule.ts';
 import {
   clearSchedule,
+  expiryOf,
   forgetAll,
   loadMe,
   loadSchedule,
@@ -96,6 +97,26 @@ test('forgetAll leaves nothing behind', () => {
   assert.equal(loadMe(), null);
   assert.equal(loadSchedule(new Date(2026, 7, 15)), null);
   assert.equal(localStorage.size, 0);
+});
+
+test('expiry is midnight after the schedule month ends', () => {
+  // The PDF store computes its own expiry from this same function, so the two
+  // caches can never disagree about which month is current. Asserted directly
+  // because a drift here would only show up as a stale PDF weeks later.
+  assert.deepEqual(expiryOf(august2026), new Date(2026, 8, 1));
+  // December has to roll the year rather than land on month 12.
+  assert.deepEqual(
+    expiryOf({ ...august2026, year: 2026, month: 12 }),
+    new Date(2027, 0, 1)
+  );
+});
+
+test('the cache dies exactly when expiryOf says it does', () => {
+  const expiry = expiryOf(august2026);
+  saveSchedule(august2026);
+  assert.ok(loadSchedule(new Date(expiry.getTime() - 1)), 'alive a tick before');
+  saveSchedule(august2026);
+  assert.equal(loadSchedule(expiry), null, 'gone on the boundary itself');
 });
 
 test('does not throw when storage is unavailable', () => {

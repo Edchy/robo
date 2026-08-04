@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { parseSchedule, shiftsFor, workdaysOf, splitHours, continuesTomorrow, isContinuation, isNightShift, type TextItem } from './schedule.ts';
+import { parseSchedule, shiftsFor, workdaysOf, splitHours, continuesTomorrow, isContinuation, isNightShift, alongsideOn, type TextItem } from './schedule.ts';
 
 const PDF =
   process.env.ROSENBO_PDF ??
@@ -123,10 +123,16 @@ test('jour is the night half of line 1, not the whole line', { skip: !available 
   assert.equal(ka.find((x) => x.dayNum === 5 && x.start === '22:00')!.standby, true);
 
   // Those hours are on call, not worked, so they must not inflate the totals
-  // or make a day look like one KA travelled in for.
+  // or make a day look like one KA travelled in for. The 9th is such a day:
+  // a Sunday, where line 1 runs 00:00–09:00 unbroken with no morning cell
+  // after it, so KA is on call from home and never comes in.
   const split = splitHours(ka);
   assert.ok(split.standby > split.worked, 'KA is mostly on call');
-  assert.equal(workdaysOf(ka).has(6), false, 'a jour-only day is not a workday');
+  assert.equal(workdaysOf(ka).has(9), false, 'a jour-only day is not a workday');
+
+  // The 6th is the contrast: the same jour night, but followed by the shared
+  // 07:00–08:00 cell, which is an hour worked on the floor and so a workday.
+  assert.equal(workdaysOf(ka).has(6), true, 'the morning cell is a trip in');
 
   // Line 1 also carries ordinary daytime work: ES is awake at work 09:00–22:00
   // on the 8th, on the same line KA's jour sits on.
@@ -225,11 +231,70 @@ test('an evening worked to 22:00 then jour is not a worked night', { skip: !avai
 test('reports co-workers on shared slots', { skip: !available }, async () => {
   const s = await load();
   // DV shares KA's 07:00–08:00 cell on day 6; without midnight stitching that
-  // stays on day 6 rather than folding back into day 5's evening.
-  const shared = shiftsFor(s, 'KA').find((x) => x.dayNum === 6)!;
+  // stays on day 6 rather than folding back into day 5's evening. Named by its
+  // start time because the jour tail preceding it is a separate shift.
+  const shared = shiftsFor(s, 'KA').find((x) => x.dayNum === 6 && x.start === '07:00')!;
   assert.deepEqual(shared.sharedWith, ['DV']);
   // BEL only ever appears in shared KA/BEL cells.
   assert.equal(shiftsFor(s, 'BEL').every((x) => x.sharedWith.includes('KA')), true);
+});
+
+test('the weekday morning joiner counts as being on the floor', { skip: !available }, async () => {
+  const s = await load();
+
+  // Weekday mornings are staffed by two: the person who slept here on line 0,
+  // and line 1's short block covering the last hour before AU takes over at
+  // 08:00. That block is worked on the floor — it is the cell *after* the jour
+  // tail, which is the one starting at midnight.
+  //
+  // Aug 5: CT slept here and works 06:30–08:00; DV covers 07:00–08:00 while
+  // AH's jour ran 00:00–07:00. CT and DV see each other; neither sees AH.
+  const ct = shiftsFor(s, 'CT').find((x) => x.dayNum === 5 && x.start === '06:30')!;
+  assert.deepEqual(alongsideOn(s, ct, 'CT'), ['DV']);
+  const dv = shiftsFor(s, 'DV').find((x) => x.dayNum === 5)!;
+  assert.deepEqual(alongsideOn(s, dv, 'DV'), ['CT']);
+
+  // A shared cell puts both names on the floor: on the 6th "KA/DV" is the
+  // 07:00–08:00 block, so RR has each of them beside them for that hour.
+  const rr = shiftsFor(s, 'RR').find((x) => x.dayNum === 6 && x.start === '06:30')!;
+  assert.deepEqual(alongsideOn(s, rr, 'RR'), ['DV', 'KA']);
+
+  // The same initials on both cells is the jour person staying on to work the
+  // last hour, not a second night — the PDF writes it exactly as it writes a
+  // fresh arrival. Aug 7 is KA on both, so CT has KA beside them.
+  const ctWithKa = shiftsFor(s, 'CT').find((x) => x.dayNum === 7 && x.start === '06:30')!;
+  assert.deepEqual(alongsideOn(s, ctWithKa, 'CT'), ['KA']);
+
+  // ...and that hour is work for KA too, split off from the jour that preceded
+  // it rather than swallowed into one long standby block.
+  const ka = shiftsFor(s, 'KA').filter((x) => x.dayNum === 7);
+  assert.deepEqual(
+    ka.map((x) => `${x.start}-${x.end} ${x.kind}`),
+    ['00:00-07:00 jour', '07:00-08:00 work', '22:00-24:00 jour']
+  );
+
+  // The reported bug: AH holds jour into Aug 4 and then works 07:00–08:00
+  // alongside ES, who slept over. Both directions must show it.
+  const ah = shiftsFor(s, 'AH').find((x) => x.dayNum === 4 && x.start === '07:00')!;
+  assert.equal(ah.kind, 'work');
+  assert.deepEqual(alongsideOn(s, ah, 'AH'), ['ES']);
+  const es4 = shiftsFor(s, 'ES').find((x) => x.dayNum === 4 && x.start === '06:30')!;
+  assert.deepEqual(alongsideOn(s, es4, 'ES'), ['AH']);
+
+  // Weekends have no joiner at all — the morning is one person until 09:00.
+  const es = shiftsFor(s, 'ES').find((x) => x.dayNum === 2 && x.start === '06:30')!;
+  assert.deepEqual(alongsideOn(s, es, 'ES'), []);
+
+  // Evening jour is unaffected: someone on call from 21:00 is at home, whoever
+  // they are and whether or not they held the night before.
+  for (const person of s.people) {
+    for (const x of shiftsFor(s, person)) {
+      if (x.kind !== 'work') continue;
+      for (const mate of alongsideOn(s, x, person)) {
+        assert.notEqual(mate, person, 'nobody is their own colleague');
+      }
+    }
+  }
 });
 
 test('merging preserves total hours', { skip: !available }, async () => {
