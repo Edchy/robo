@@ -9,7 +9,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { parseSchedule, shiftsFor, workdaysOf, splitHours, continuesTomorrow, isContinuation, isNightShift, alongsideOn, type TextItem } from './schedule.ts';
+import { parseSchedule, shiftsFor, workdaysOf, splitHours, continuesTomorrow, isContinuation, isNightShift, alongsideOn, alongsideNote, type Alongside, type TextItem } from './schedule.ts';
+
+/** Just the names, for assertions that do not care about the hours. */
+const codes = (mates: Alongside[]) => mates.map((m) => m.code);
 
 const PDF =
   process.env.ROSENBO_PDF ??
@@ -258,29 +261,28 @@ test('the weekday morning joiner counts as being on the floor', { skip: !availab
   // Aug 5: CT slept here and works 06:30–08:00; DV covers 07:00–08:00 while
   // AH's jour ran 00:00–07:00. CT and DV see each other; neither sees AH.
   const ct = shiftsFor(s, 'CT').find((x) => x.dayNum === 5 && x.start === '06:30')!;
-  assert.deepEqual(alongsideOn(s, ct, 'CT'), ['DV']);
+  assert.deepEqual(codes(alongsideOn(s, ct, 'CT')), ['DV']);
   const dv = shiftsFor(s, 'DV').find((x) => x.dayNum === 5)!;
-  assert.deepEqual(alongsideOn(s, dv, 'DV'), ['CT']);
+  assert.deepEqual(codes(alongsideOn(s, dv, 'DV')), ['CT']);
 
   // A shared cell is one slot that has not been settled, not two people: on the
   // 6th "KA/DV" is the 07:00–08:00 block, so RR gets *one* colleague for that
   // hour and does not yet know which of the two it is. Reporting both would
   // invent a person who is not coming.
   const rr = shiftsFor(s, 'RR').find((x) => x.dayNum === 6 && x.start === '06:30')!;
-  assert.deepEqual(alongsideOn(s, rr, 'RR'), ['KA/DV']);
+  assert.deepEqual(codes(alongsideOn(s, rr, 'RR')), ['KA/DV']);
 
   // Seen from inside the pair the slot resolves itself: KA reading their own
   // schedule is the one covering it, so DV is never reported as beside them.
   const kaShared = shiftsFor(s, 'KA').find((x) => x.dayNum === 6 && x.start === '07:00')!;
-  const kaSees = alongsideOn(s, kaShared, 'KA');
+  const kaSees = codes(alongsideOn(s, kaShared, 'KA'));
   assert.equal(kaSees.includes('DV'), false, 'the other half of your own slot is not a colleague');
   assert.equal(kaSees.some((c) => c.includes('KA')), false, 'nobody is their own colleague');
 
   // Nobody is ever reported twice, once alone and once inside a pair.
   for (const person of s.people) {
     for (const x of shiftsFor(s, person)) {
-      const seen = alongsideOn(s, x, person);
-      const flat = seen.flatMap((c) => c.split('/'));
+      const flat = codes(alongsideOn(s, x, person)).flatMap((c) => c.split('/'));
       assert.equal(new Set(flat).size, flat.length, `${person} ${x.date} lists someone twice`);
     }
   }
@@ -289,7 +291,7 @@ test('the weekday morning joiner counts as being on the floor', { skip: !availab
   // last hour, not a second night — the PDF writes it exactly as it writes a
   // fresh arrival. Aug 7 is KA on both, so CT has KA beside them.
   const ctWithKa = shiftsFor(s, 'CT').find((x) => x.dayNum === 7 && x.start === '06:30')!;
-  assert.deepEqual(alongsideOn(s, ctWithKa, 'CT'), ['KA']);
+  assert.deepEqual(codes(alongsideOn(s, ctWithKa, 'CT')), ['KA']);
 
   // ...and that hour is work for KA too, split off from the jour that preceded
   // it rather than swallowed into one long standby block.
@@ -303,9 +305,9 @@ test('the weekday morning joiner counts as being on the floor', { skip: !availab
   // alongside ES, who slept over. Both directions must show it.
   const ah = shiftsFor(s, 'AH').find((x) => x.dayNum === 4 && x.start === '07:00')!;
   assert.equal(ah.kind, 'work');
-  assert.deepEqual(alongsideOn(s, ah, 'AH'), ['ES']);
+  assert.deepEqual(codes(alongsideOn(s, ah, 'AH')), ['ES']);
   const es4 = shiftsFor(s, 'ES').find((x) => x.dayNum === 4 && x.start === '06:30')!;
-  assert.deepEqual(alongsideOn(s, es4, 'ES'), ['AH']);
+  assert.deepEqual(codes(alongsideOn(s, es4, 'ES')), ['AH']);
 
   // Weekends have no joiner at all — the morning is one person until 09:00.
   const es = shiftsFor(s, 'ES').find((x) => x.dayNum === 2 && x.start === '06:30')!;
@@ -317,7 +319,92 @@ test('the weekday morning joiner counts as being on the floor', { skip: !availab
     for (const x of shiftsFor(s, person)) {
       if (x.kind !== 'work') continue;
       for (const mate of alongsideOn(s, x, person)) {
-        assert.notEqual(mate, person, 'nobody is their own colleague');
+        assert.notEqual(mate.code, person, 'nobody is their own colleague');
+      }
+    }
+  }
+});
+
+test('a colleague is reported with the hours you overlap, not their own', { skip: !available }, async () => {
+  const s = await load();
+
+  // The reported misread: KA works 06:30–09:00 on Aug 11 and ES joins only at
+  // 08:00, so KA is alone for the first 90 minutes. A bare "du jobbar med ES"
+  // claimed company for the whole shift.
+  const ka = shiftsFor(s, 'KA').find((x) => x.dayNum === 11 && x.start === '06:30')!;
+  const [es] = alongsideOn(s, ka, 'KA');
+  assert.equal(es.code, 'ES');
+  assert.equal(es.fromMin, 8 * 60, 'ES is there from 08:00, not 06:30');
+  assert.equal(es.toMin, 9 * 60);
+  assert.equal(es.whole, false);
+  assert.equal(alongsideNote(es, ka), 'från 08:00');
+
+  // Symmetric: from ES's side the time together is the same hour, even though
+  // KA's own shift began long before it.
+  const esShift = shiftsFor(s, 'ES').find((x) => x.dayNum === 11 && x.start === '08:00')!;
+  const [kaSeen] = alongsideOn(s, esShift, 'ES');
+  assert.equal(kaSeen.code, 'KA');
+  assert.equal(kaSeen.fromMin, 8 * 60);
+  assert.equal(kaSeen.toMin, 9 * 60);
+  // ES's shift *is* that hour, so KA covers all of it and needs no qualifier —
+  // the note names only what differs from the shift being read.
+  assert.equal(kaSeen.whole, true);
+  assert.equal(alongsideNote(kaSeen, esShift), '');
+
+  // An overlap never runs outside the shift it is reported against: printing a
+  // colleague's own hours is what made the range misleading in the first place.
+  for (const person of s.people) {
+    for (const x of shiftsFor(s, person)) {
+      const from = Number(x.start.slice(0, 2)) * 60 + Number(x.start.slice(3));
+      const to = Number(x.end.slice(0, 2)) * 60 + Number(x.end.slice(3));
+      for (const mate of alongsideOn(s, x, person)) {
+        assert.ok(mate.fromMin >= from, `${person} ${x.date}: ${mate.code} starts before the shift`);
+        assert.ok(mate.toMin <= to, `${person} ${x.date}: ${mate.code} ends after the shift`);
+        assert.ok(mate.fromMin < mate.toMin, `${person} ${x.date}: ${mate.code} has an empty overlap`);
+      }
+    }
+  }
+});
+
+test('the overlap note names only what differs from your shift', { skip: !available }, async () => {
+  const s = await load();
+  const shift = shiftsFor(s, 'KA').find((x) => x.dayNum === 11 && x.start === '06:30')!;
+  const span = (fromMin: number, toMin: number, whole = false): Alongside =>
+    ({ code: 'XX', fromMin, toMin, whole });
+
+  // 06:30–09:00 is the shift being read.
+  assert.equal(alongsideNote(span(390, 540, true), shift), '', 'there throughout: no qualifier');
+  assert.equal(alongsideNote(span(480, 540), shift), 'från 08:00', 'joins late');
+  assert.equal(alongsideNote(span(390, 480), shift), 'till 08:00', 'leaves early');
+  assert.equal(alongsideNote(span(420, 480), shift), '07:00–08:00', 'both ends differ');
+});
+
+test('XX is an unfilled post, never a colleague', { skip: !available }, async () => {
+  const s = await load();
+
+  // XX marks a slot nobody has been assigned to. It must not reach the person
+  // picker — you cannot be XX — and it must never be reported as company: the
+  // July schedule told CT "Du jobbar med XX" for a full day, when the honest
+  // reading is that the post beside them was open and they might be alone.
+  assert.equal(s.people.includes('XX'), false, 'XX is not staff');
+
+  for (const person of s.people) {
+    for (const x of shiftsFor(s, person)) {
+      assert.equal(
+        x.contestedWith.includes('XX'),
+        false,
+        `${person} ${x.date}: an open half-slot is not a contested one`
+      );
+      for (const mate of alongsideOn(s, x, person)) {
+        if (mate.unassigned) {
+          assert.equal(mate.code, 'XX', 'a vacancy is flagged, not named');
+          continue;
+        }
+        assert.equal(
+          mate.code.split('/').includes('XX'),
+          false,
+          `${person} ${x.date}: XX leaked in as a named colleague`
+        );
       }
     }
   }

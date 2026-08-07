@@ -15,19 +15,25 @@
    * carries the ordering — which is what makes it survive a greyscale
    * printout and every form of colour blindness.
    *
-   * The four steps are spaced by equal *contrast ratio* (2.15:1 between each
+   * The four steps are spaced by equal *contrast ratio* (1.99:1 between each
    * neighbour), not by equal lightness numbers. Evenly-spaced L values look
    * bunched at the dark end, and with a single hue the spacing is the only
    * thing keeping morgon and dag apart — they are the two most common bands
    * and sit side by side in the calendar, so that pair sets the requirement.
    *
+   * Morgon was 90% and sat 1.26:1 off the page — pale enough that a morning
+   * cell read as an empty one. Pulling it to 83% (1.57:1) gives it presence,
+   * and the ramp below it was re-solved from there rather than just darkened
+   * at the top, which would have squeezed the morgon–dag step to 1.55 and put
+   * the two commonest bands back within confusing distance of each other.
+   *
    * Chroma rises toward the middle: the pale end would go muddy if saturated,
    * and natt needs to stay ink-dark rather than turn into a bright blue. */
-  --morning: oklch(90% 0.03 265);
+  --morning: oklch(83% 0.05 265);
   --morning-ink: oklch(25% 0.04 265);
-  --day: oklch(68% 0.075 265);
+  --day: oklch(64% 0.08 265);
   --day-ink: oklch(25% 0.04 265);
-  --evening: oklch(49.5% 0.11 265);
+  --evening: oklch(47.8% 0.115 265);
   --evening-ink: oklch(100% 0 0);
   --night: oklch(31% 0.09 265);
   --night-ink: oklch(100% 0 0);
@@ -40,9 +46,14 @@
    * of them (it used to sit 1.06:1 from morgon, i.e. the same swatch).
    * Neutral also says the right thing: not a band, rather than a fifth one.
    * They are separated from each other by lightness, same as the ramp. */
+  /* These two only ever paint blocks in the day rows and the day sheet, which
+     are stacked in a column with gaps between them and carry their own icon
+     and times — never tiled edge to edge like calendar cells. So they are set
+     for legibility against the page and their own ink, not for the
+     grid-neighbour separation the four bands need from each other. */
   --jour: oklch(95% 0 0);
   --jour-ink: oklch(28% 0 0);
-  --sleep: oklch(83.5% 0 0);
+  --sleep: oklch(90% 0 0);
   --sleep-ink: oklch(24% 0 0);
 
   --pick-0: oklch(86% 0.1 202);
@@ -62,6 +73,9 @@
 
   --danger-bg: oklch(95% 0.03 25);
   --danger-ink: oklch(42% 0.15 25);
+  /* The one red in the calendar, reserved for "there is a pass here you cannot
+     see". 6.1:1 against the white glyph it carries. */
+  --attention: oklch(52% 0.19 25);
   --raised-surface: oklch(93% 0.016 245);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -771,8 +785,14 @@ svg {
   height: 1rem;
 }
 
+/*
+ * A floor, not a spacer. It keeps the card from collapsing when a shift has no
+ * notes at all, so the headline does not jump between sizes as you page
+ * through days. Lowered from 13rem, which reserved dead space under the time
+ * and let the notes drift far enough away to look unrelated to it.
+ */
 .next-shift__main {
-  min-height: 13rem;
+  min-height: 9.5rem;
 }
 
 .next-shift__date {
@@ -811,15 +831,32 @@ svg {
 
 .next-shift__footer {
   align-items: flex-end;
-  margin-top: 1rem;
+  /* Close under the time: these notes describe it, and a wide gap here is what
+     let them read as a separate block belonging to whatever sat nearest. */
+  margin-top: 0.5rem;
 }
 
 .next-shift__notes {
   display: flex;
   max-width: 30rem;
   flex-direction: column;
+  /* Between the two groups: enough that beredskap reads as its own statement
+     rather than one more line of the shift's description. */
+  gap: 0.7rem;
   font-size: 0.875rem;
   line-height: 1.45;
+}
+
+/*
+ * Notes that describe the shift in the headline. Held tight together — and, via
+ * the footer's reduced margin, close under the time itself — because proximity
+ * is what says "this is about that". Loose in a single column, "Du jobbar med
+ * AH" sat directly beneath a beredskap line and looked like it belonged to it.
+ */
+.next-shift__about-shift {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
 /*
@@ -844,10 +881,20 @@ svg {
 
 /* Beredskap on the headline card. It never takes the card itself, so it reads
    as one more note among the others rather than as a competing shift. */
+/*
+ * Beredskap: hours that are not the pass above, only the same date. Set a step
+ * back from the shift's own notes — smaller and slightly faded against the
+ * band — so the grouping survives even when both are one line each.
+ *
+ * Faded rather than recoloured: the card is painted in its band, and any ink
+ * that is not the band's own would read as a third meaning.
+ */
 .next-shift__standby {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  font-size: 0.8125rem;
+  opacity: 0.82;
 }
 
 .next-shift__standby svg {
@@ -894,7 +941,39 @@ svg {
 }
 
 .coworker-pills {
+  gap: 0.5rem;
+}
+
+/*
+ * A colleague and, when their hours differ from yours, the part of the shift
+ * they are actually there for. Kept as one unit so the qualifier cannot drift
+ * onto a line by itself and end up read against the wrong name — with two
+ * colleagues on a narrow card, "(från 08:00)" beside the wrong pill is worse
+ * than no qualifier at all.
+ */
+.colleague {
+  display: inline-flex;
+  align-items: center;
   gap: 0.25rem;
+  white-space: nowrap;
+}
+
+/* Quieter than the pill: the name is what you scan for, the hours are the
+   correction. Same weight would make every shift look like an exception. */
+.colleague__hours {
+  font-size: 0.8125em;
+  opacity: 0.85;
+}
+
+/* An unfilled post. Outlined rather than filled, because every filled pill on
+   this page is a person and this is the absence of one. */
+.colleague__vacant {
+  padding: 0.1rem 0.45rem;
+  border: 1px dashed currentColor;
+  border-radius: 999px;
+  font-size: 0.8125em;
+  font-weight: 640;
+  opacity: 0.8;
 }
 
 .person-pill {
@@ -1185,14 +1264,62 @@ svg {
   position: relative;
 }
 
-.calendar-cell__standby {
+/*
+ * The cell's annotation corner: top-right, opposite the date. Down beside the
+ * band label these read as part of that label — "morgon ⏻" — when they are
+ * separate facts about the day.
+ *
+ * A row, because a day can carry both marks at once. Beredskap sits first and
+ * the warning outermost, so the corner reads inward-to-outward by urgency and
+ * the alert lands where the eye goes on a grid scanned left to right.
+ */
+.calendar-cell__marks {
   position: absolute;
+  top: 0.4rem;
   right: 0.4rem;
-  bottom: 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.calendar-cell__standby {
   display: grid;
   place-items: center;
   color: var(--ink-muted);
   opacity: 0.85;
+}
+
+/*
+ * "This day holds another pass the cell is not showing."
+ *
+ * Red, and the only red in the calendar: a one-hour morning hours away from the
+ * shift the cell names is the thing people actually miss, and missing it means
+ * not turning up. It has to survive on all four bands, so it is a filled disc
+ * with the glyph knocked out rather than red ink — red text on the dark navy
+ * night band would fail contrast badly.
+ */
+.calendar-cell__more {
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  border-radius: 999px;
+  /* Ringed in the cell's own ink, which `currentColor` still is at this point —
+     the glyph colour is set on the svg below, not here. Measured against the
+     four bands, every red usable at this size lands within 1.0–1.5:1 of the
+     kväll blue — same lightness, different hue — so the disc alone would
+     disappear on that band. The ring is what separates it, on all four. */
+  box-shadow: 0 0 0 1.5px currentColor;
+  background: var(--attention);
+}
+
+.calendar-cell__more svg {
+  width: 0.7rem;
+  height: 0.7rem;
+  /* White on the red disc, 6.1:1 — the same knocked-out treatment the other
+     corner marks use. */
+  color: oklch(100% 0 0);
 }
 
 .calendar-cell__standby svg {
@@ -1281,8 +1408,7 @@ svg {
 }
 
 /*
- * The "one of you two works this" mark. Top-right corner, opposite the date, so
- * it never fights the number for the same space.
+ * The "one of you two works this" mark, in the annotation corner above.
  *
  * Deliberately not a fifth band colour: colour means time of day here, and an
  * unsettled slot can be any band. It reads as a warning through the icon shape
@@ -1290,15 +1416,13 @@ svg {
  * palette is tuned for. Dark bands get a light ring, light bands a dark one.
  */
 .calendar-cell__contested {
-  position: absolute;
-  top: 0.3rem;
-  right: 0.3rem;
   display: grid;
   place-items: center;
   width: 1rem;
   height: 1rem;
   border-radius: 999px;
   background: currentColor;
+  flex: none;
 }
 
 .calendar-cell__contested svg {
@@ -1386,6 +1510,14 @@ svg {
   border: 1px solid var(--line-strong);
   color: var(--ink-muted);
 }
+/* Matches the mark in the cell. On the key's white ground the ring is
+   unnecessary, but it is kept so the two read as the same object. */
+.calendar-key__mark--more {
+  background: var(--attention);
+  color: oklch(100% 0 0);
+  border-radius: 999px;
+}
+
 /* Matches the mark in the cell: a filled disc with the glyph knocked out. */
 .calendar-key__mark--contested {
   background: var(--ink);
@@ -2474,13 +2606,23 @@ svg {
     align-items: flex-end;
     flex-direction: row;
     gap: 1rem;
-    margin-top: 2.75rem;
+    /* Was 2.75rem, which on the narrowest screen left the notes stranded far
+       below the time they describe — the width where that misreading is worst,
+       since there is no room for anything else to sit between them. */
+    margin-top: 1.25rem;
   }
 
   .next-shift__notes {
     max-width: 12rem;
-    gap: 0.1rem;
+    /* Still two groups here. Tighter than on a wide card, but never collapsed
+       to a single even column, or the grouping is lost exactly where the card
+       is most cramped. */
+    gap: 0.5rem;
     font-size: 0.8125rem;
+  }
+
+  .next-shift__standby {
+    font-size: 0.75rem;
   }
 
   .next-shift__footer button {

@@ -20,6 +20,22 @@ const COLS: { x: number; f: string }[] = [
 /** Codes that denote an activity/placement rather than a member of staff. */
 export const ACTIVITY_CODES = new Set(['AU']);
 
+/**
+ * The vacancy marker: a slot that exists on the schedule with nobody assigned
+ * to it yet.
+ *
+ * Not an activity like AU, which is a placement and simply is not a person, and
+ * not a colleague either — the shift is real but the name is missing. It is
+ * worth surfacing rather than hiding, because an unfilled slot beside you is
+ * how you find out you may be on the floor alone, but it must never be shown as
+ * someone you work with: July 19 told CT "Du jobbar med XX" for a full day.
+ */
+export const UNASSIGNED_CODE = 'XX';
+
+/** True for a code that is a real, named member of staff. */
+export const isPerson = (code: string): boolean =>
+  !ACTIVITY_CODES.has(code) && code !== UNASSIGNED_CODE;
+
 const WEEKDAYS: Record<string, string> = {
   'måndag': 'Måndag', 'tisdag': 'Tisdag', 'onsdag': 'Onsdag', 'torsdag': 'Torsdag',
   'fredag': 'Fredag', 'lördag': 'Lördag', 'söndag': 'Söndag',
@@ -354,18 +370,42 @@ export const bandOf = (shift: Shift): ShiftBand => {
  * takes over at 08:00. `isStandbyBlock` draws that line already — the jour tail
  * is the cell starting at midnight, the one after it is work — so this function
  * only has to trust it.
+ *
+ * Each name comes back with the hours you are *actually together*, clipped to
+ * your own shift — not the colleague's own shift. The two differ often enough
+ * to mislead: KA works 06:30–09:00 on Aug 11 and ES joins only at 08:00, so a
+ * bare "du jobbar med ES" claimed company for 90 minutes KA spends alone. The
+ * overlap is also symmetric, which their own hours are not: read from ES's
+ * side, KA's shift starts 06:30 but the time together is still 08:00–09:00.
  */
+export type Alongside = {
+  /** Staff code, or "KA/DV" for a slot the schedule has not settled. */
+  code: string;
+  /** Overlap with your shift, in minutes from midnight. */
+  fromMin: number;
+  toMin: number;
+  /** True when they are there for every minute of your shift. */
+  whole: boolean;
+  /**
+   * The slot is on the schedule with nobody in it (written "XX"). Not a
+   * colleague — callers must say the post is unfilled rather than name it as
+   * company, since the honest reading is "you may be alone for these hours".
+   */
+  unassigned: boolean;
+};
+
 export const alongsideOn = (
   schedule: Schedule,
   shift: Shift,
   me: string
-): string[] => {
+): Alongside[] => {
   const day = schedule.days.find((d) => d.date === shift.date);
   if (!day) return [];
 
   const from = toMin(shift.start);
   const to = toMin(shift.end);
-  const found = new Set<string>();
+  // Ranges per person, in the order the blocks are read; merged below.
+  const found = new Map<string, { fromMin: number; toMin: number }[]>();
 
   day.lines.forEach((line, lineIndex) => {
     for (const b of line.blocks) {
@@ -381,13 +421,62 @@ export const alongsideOn = (
       if (b.codes.includes(me)) continue;
       const others = b.codes.filter((c) => !ACTIVITY_CODES.has(c));
       if (others.length === 0) continue;
+      // A cell holding only "XX" is a post nobody has been put on yet. It is
+      // still reported — an unfilled slot beside you is how you learn you may
+      // be working alone — but as a vacancy, never as a name. Paired with a
+      // real person ("KA/XX") the named half is what matters: someone is
+      // coming, and it is the schedule's own shorthand for "KA or whoever".
+      const named = others.filter(isPerson);
+      const unassigned = named.length === 0;
       // An unresolved cell that is not mine stays unresolved — one slot, one of
       // two people, and the schedule does not yet say which.
-      found.add(others.join('/'));
+      const code = unassigned ? UNASSIGNED_CODE : named.join('/');
+      // Clipped to my shift: what is being answered is "who is here while I am
+      // here", so a colleague's hours outside it are not part of the answer.
+      const span = {
+        fromMin: Math.max(toMin(b.start), from),
+        toMin: Math.min(toMin(b.end), to),
+      };
+      const spans = found.get(code);
+      if (spans) spans.push(span);
+      else found.set(code, [span]);
     }
   });
 
-  return [...found].sort();
+  return [...found.entries()]
+    .map(([code, spans]) => {
+      // Someone can hold two blocks in one shift — a morning hour and an
+      // evening one — and the PDF writes consecutive hours as separate cells
+      // besides. Merge anything touching so "07:00–08:00, 08:00–09:00" is not
+      // reported as two separate visits.
+      const sorted = [...spans].sort((a, b) => a.fromMin - b.fromMin);
+      const merged = sorted.reduce<typeof sorted>((acc, span) => {
+        const last = acc[acc.length - 1];
+        if (last && span.fromMin <= last.toMin) {
+          last.toMin = Math.max(last.toMin, span.toMin);
+          return acc;
+        }
+        return [...acc, { ...span }];
+      }, []);
+      // A split run is reported by its outer bounds. The gap is real but it is
+      // a detail for the sheet, not for a line that has to stay one line.
+      const fromMin = merged[0].fromMin;
+      const toMinValue = merged[merged.length - 1].toMin;
+      return {
+        code,
+        fromMin,
+        toMin: toMinValue,
+        whole: fromMin <= from && toMinValue >= to && merged.length === 1,
+        unassigned: code === UNASSIGNED_CODE,
+      };
+    })
+    // Named colleagues first; an unfilled post is the last thing in the list
+    // because it is the absence of one.
+    .sort((a, b) =>
+      a.unassigned !== b.unassigned
+        ? Number(a.unassigned) - Number(b.unassigned)
+        : a.code.localeCompare(b.code, 'sv')
+    );
 };
 
 /**
@@ -444,8 +533,44 @@ const toMin = (t: string): number => {
 const pad = (n: number) => String(n).padStart(2, '0');
 const fromMin = (m: number): string => `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}`;
 
+/**
+ * Hours for display: "7", "7,5", "0,25".
+ *
+ * Every block in the schedules seen so far lands on a :00 or :30 boundary, so
+ * one decimal is enough for them — but a quarter hour would round to "0,3" and
+ * quietly misstate a figure people check their pay against. Trailing zeroes are
+ * dropped so the common case stays short.
+ */
 export const formatHours = (h: number): string =>
-  (Number.isInteger(h) ? String(h) : h.toFixed(1)).replace('.', ',');
+  (Number.isInteger(h) ? String(h) : String(Number(h.toFixed(2)))).replace('.', ',');
+
+/**
+ * How a colleague's overlap reads next to their initials.
+ *
+ * Names only what differs from your own shift, because that is the whole point:
+ * someone there start to finish needs no qualifier, and printing a range for
+ * them would invite the range being read as *your* hours changing. So
+ *
+ *   there throughout    ->  ''                 (nothing after the pill)
+ *   joins after you     ->  'från 08:00'
+ *   leaves before you   ->  'till 22:00'
+ *   both                ->  '08:00–22:00'
+ *
+ * `shift` is the one being read, and the overlap has already been clipped to
+ * it, so comparing bounds is enough to tell which case applies.
+ */
+export const alongsideNote = (mate: Alongside, shift: Shift): string => {
+  if (mate.whole) return '';
+  const joinsLate = mate.fromMin > toMin(shift.start);
+  const leavesEarly = mate.toMin < toMin(shift.end);
+  if (joinsLate && leavesEarly)
+    return `${fromMin(mate.fromMin)}–${fromMin(mate.toMin)}`;
+  if (joinsLate) return `från ${fromMin(mate.fromMin)}`;
+  if (leavesEarly) return `till ${fromMin(mate.toMin)}`;
+  // Covers your whole shift but in two stretches with a gap: the bounds say
+  // nothing useful, so say nothing rather than imply continuous company.
+  return '';
+};
 
 const nearestField = (x: number): string | null => {
   if (x < 100) return 'date';
@@ -545,12 +670,17 @@ export function parseSchedule(items: TextItem[]): Schedule {
     }
   }
 
+  // Real staff only. AU is a placement, XX is a post nobody has been assigned
+  // to — neither is someone who can open this app and pick their own initials,
+  // and letting them in meant every consumer had to remember to filter them
+  // out again. `shiftsFor('XX')` still works if anything ever wants the
+  // unfilled slots themselves.
   const people = new Set<string>();
   for (const day of days)
     for (const line of day.lines)
       for (const b of line.blocks)
         for (const c of b.codes)
-          if (!ACTIVITY_CODES.has(c)) people.add(c);
+          if (isPerson(c)) people.add(c);
 
   return {
     days,
@@ -620,7 +750,11 @@ export function shiftsFor(schedule: Schedule, code: string): Shift[] {
 
     mine.sort((a, b) => toMin(a.start) - toMin(b.start));
     for (const b of mine) {
-      const others = b.codes.filter((c) => c !== code);
+      // Only real names contest a slot. "KA/XX" is KA's shift with the other
+      // half still open, not a coin-toss between KA and a person called XX —
+      // flagging it as unsettled would send KA to check a schedule that has
+      // already given them the slot.
+      const others = b.codes.filter((c) => c !== code && isPerson(c));
       const last = spans[spans.length - 1];
       // Only merge blocks of the same kind: an awake hour, a slept hour and an
       // on-call hour are different work even when they touch, and folding them
@@ -738,3 +872,30 @@ export function personHues(people: readonly string[]): Map<string, number> {
   }
   return out;
 }
+
+/**
+ * How often the page's clock is allowed to move.
+ *
+ * Coarse on purpose. The finest distinction anything here draws is "pågår nu"
+ * versus not, so a shift boundary landing up to a minute late costs nothing,
+ * while a tighter timer would spend battery re-rendering an unchanged page.
+ */
+export const TICK_MS = 60_000;
+
+/**
+ * The clock's next value, given where it was and what time it is now.
+ *
+ * Returns the *same* Date object when nothing this page can display has
+ * changed, so React can skip the re-render: a new object every tick would
+ * redraw the whole ledger sixty times an hour to paint identical pixels.
+ *
+ * Split out from the hook that calls it because it is the part that can be
+ * wrong in ways nobody would notice by looking — a comparison that never
+ * advances leaves someone reading a three-day-old "nästa pass", and one that
+ * always advances burns battery. Both are cheap to assert and invisible in a
+ * browser.
+ */
+export const advanceClock = (previous: Date, nowMs: number): Date =>
+  Math.floor(previous.getTime() / TICK_MS) === Math.floor(nowMs / TICK_MS)
+    ? previous
+    : new Date(nowMs);
