@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { readSchedulePdf } from './pdf';
 import OriginalPdfView from './OriginalPdfView';
 import { downloadIcs } from './ics';
 import {
+  advanceClock,
+  alongsideNote,
   alongsideOn,
   bandOf,
   continuesTomorrow,
@@ -14,6 +16,8 @@ import {
   splitHours,
   workdaysOf,
   ScheduleError,
+  TICK_MS,
+  type Alongside,
   type Schedule,
   type Shift,
 } from './schedule';
@@ -55,7 +59,7 @@ const timeBandLabel = (band: TimeBand) =>
     day: 'Dagpass',
     evening: 'Kvällspass',
     night: 'Nattpass',
-    long: 'Dag + kväll',
+    long: 'Heldag',
   })[band];
 
 const localDate = (schedule: Schedule, day: number, time = '00:00') => {
@@ -370,10 +374,8 @@ function PersonPicker({
   onPick: (code: string) => void;
   onBack: () => void;
 }) {
-  const people = useMemo(
-    () => schedule.people.filter((code) => code !== 'XX'),
-    [schedule.people]
-  );
+  /* `schedule.people` is already real staff only — XX and AU never enter it. */
+  const people = schedule.people;
   const personColors = useMemo(() => personHues(people), [people]);
 
   return (
@@ -409,6 +411,54 @@ function PersonPicker({
   );
 }
 
+/**
+ * The current time, kept current.
+ *
+ * Everything dated on this page hangs off one `now`: which day is "idag", which
+ * shift is next, which days have receded into "dagar som varit", whether a
+ * shift is running. Read once at mount, all of it silently rots — and this app
+ * is built to be opened, imported once and left, so the tab that comes back is
+ * usually a *restored* tab rather than a fresh load. Someone opening their
+ * phone three days later would be told their next shift is one that finished on
+ * Tuesday.
+ *
+ * Two triggers, because neither is sufficient alone:
+ *
+ *   - visibilitychange, for the case above. A backgrounded phone tab is frozen;
+ *     its timers do not fire on any schedule worth trusting, and the moment
+ *     that actually matters is the one where the page is looked at again.
+ *   - a slow interval, for a page left open and visible — a noticeboard, or a
+ *     phone kept awake — where midnight passes with nobody touching anything.
+ *
+ * The interval is deliberately coarse. Nothing here is displayed to the minute:
+ * the finest distinction the UI draws is "pågår nu" versus not, and a shift
+ * boundary landing up to a minute late costs nothing. A tighter timer would
+ * only spend battery re-rendering a page that has not changed.
+ */
+function useNow(): Date {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const sync = () => setNow((previous) => advanceClock(previous, Date.now()));
+
+    const timer = setInterval(sync, TICK_MS);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') sync();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    // Safari on iOS restores a bfcache page without firing visibilitychange.
+    window.addEventListener('pageshow', sync);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('pageshow', sync);
+    };
+  }, []);
+
+  return now;
+}
+
 function ScheduleView({
   schedule,
   me,
@@ -428,10 +478,10 @@ function ScheduleView({
 }) {
   const shifts = useMemo(() => shiftsFor(schedule, me), [schedule, me]);
   const personColors = useMemo(
-    () => personHues(schedule.people.filter((code) => code !== 'XX')),
+    () => personHues(schedule.people),
     [schedule.people]
   );
-  const now = useMemo(() => new Date(), []);
+  const now = useNow();
   const [openDay, setOpenDay] = useState<number | null>(null);
   const [pdfOpen, setPdfOpen] = useState(false);
   const pdfInput = useRef<HTMLInputElement>(null);
@@ -535,6 +585,7 @@ function ScheduleView({
         dayShifts={nextShift ? byDay.get(nextShift.shift.dayNum) ?? [] : []}
         allShifts={shifts}
         me={me}
+        now={now}
         personColors={personColors}
         onOpenDay={setOpenDay}
       />
@@ -706,14 +757,31 @@ function MonthCalendar({
     (shift) => shift.kind === 'work' && !isContinuation(shift, shifts)
   );
   const nightShifts = workShifts.filter(isNightShift);
-  const usedBands = new Set(workShifts.map(timeBandOf));
-  const hasAfterNight = shifts.some(
-    (shift) => shift.kind === 'work' && isContinuation(shift, shifts)
+  // Every worked band that shows in the grid, continuations included. They are
+  // left out of `workShifts` because they are not a trip in and must not count
+  // as a workday, but the grid still paints and labels them — so the key has to
+  // explain them or a "morgon" cell appears with nothing to match it.
+  const usedBands = new Set(
+    shifts.filter((shift) => shift.kind === 'work').map(timeBandOf)
   );
   const jourStarts = shifts.filter(
     (shift) => shift.kind === 'jour' && !isContinuation(shift, shifts)
   );
-  const hasSleep = shifts.some((shift) => shift.kind === 'sleep');
+  const hasContested = shifts.some((shift) => shift.contestedWith.length > 0);
+  // Whether any cell in the month is hiding a second trip in. Mirrors the
+  // per-cell test below so the key never explains a mark that is not there —
+  // and never omits one that is.
+  const hasHiddenWork = [...byDay.values()].some((dayShifts) => {
+    const work = dayShifts.filter((shift) => shift.kind === 'work');
+    if (work.length < 2) return false;
+    const fresh = work.filter((shift) => !isContinuation(shift, shifts));
+    const shown =
+      fresh.find(isNightShift) ??
+      fresh[0] ??
+      work.find((shift) => isContinuation(shift, shifts)) ??
+      null;
+    return work.some((shift) => shift !== shown);
+  });
   const workdays = workdaysOf(shifts);
 
   // No heading and no month eyebrow: the app bar already names the month, and a
@@ -770,6 +838,17 @@ function MonthCalendar({
           const visualBand = band ?? (tailShift ? timeBandOf(tailShift) : null);
           const hasJour = dayShifts.some((shift) => shift.kind === 'jour');
           const hasSleep = dayShifts.some((shift) => shift.kind === 'sleep');
+          // The cell paints one band, but a day can hold two separate trips in
+          // — a one-hour morning and an evening, hours apart. Whichever the
+          // cell picked, the other is invisible here, and a 07:00–08:00 slot is
+          // exactly the kind of thing that gets missed until the morning of.
+          // Six such days in August; the hidden block is as often the long one
+          // as the short one, so this says "there is more here", not "short
+          // shift".
+          const shownShift = primary ?? tailShift ?? null;
+          const hiddenWork = dayShifts.filter(
+            (shift) => shift.kind === 'work' && shift !== shownShift
+          );
           const isToday =
             now.getFullYear() === schedule.year &&
             now.getMonth() + 1 === schedule.month &&
@@ -796,25 +875,50 @@ function MonthCalendar({
             );
           }
 
+          // Beredskap is not a shift: you are at home, the hours are not worked
+          // hours, and `workdaysOf` already refuses to count the day. A day
+          // holding nothing else is therefore a free day that owes something,
+          // not a working day — so it keeps the empty cell's look and takes a
+          // corner marker instead of a filled band. Without this, KA's month
+          // shows 12 days of "work" that are actually days at home.
+          const onlyStandby = !visualBand;
+          if (onlyStandby) {
+            return (
+              <button
+                key={day}
+                role="gridcell"
+                className={`calendar-cell calendar-cell--empty calendar-cell--standby ${isToday ? 'calendar-cell--today' : ''} ${isPast ? 'calendar-cell--past' : ''}`}
+                aria-current={isToday ? 'date' : undefined}
+                aria-label={`${scheduleDay.weekday} ${day} ${MONTHS[schedule.month - 1]}. ${dayShifts
+                  .map((shift) => `${shift.start} till ${shift.end}, ${shiftKindLabel(shift, shifts)}`)
+                  .join('. ')}`}
+                onClick={() => onOpenDay(day)}
+              >
+                <span className="calendar-cell__number">{day}</span>
+                <span className="calendar-cell__marks" aria-hidden="true">
+                  <span className="calendar-cell__standby">
+                    {hasSleep && !hasJour ? <SleepIcon /> : <JourIcon />}
+                  </span>
+                </span>
+              </button>
+            );
+          }
+
+          // The morning after a night slept here is just a morning. It used to
+          // read "efter natt", which named the shift by what preceded it rather
+          // than by what it asks of you — and at a glance the only question is
+          // which part of the day you are working.
           const shortLabel = primary && band
-            ? ({ morning: 'morgon', day: 'dag', evening: 'kväll', night: 'natt', long: 'dag/kväll' })[band]
-            : tailShift
-              ? 'efter natt'
-            : hasJour
-              ? 'jour'
-              : hasSleep
-                ? 'sovjour'
-                : 'pass';
+            ? ({ morning: 'morgon', day: 'dag', evening: 'kväll', night: 'natt', long: 'heldag' })[band]
+            : 'morgon';
           const compactLabel = primary && band
-            ? ({ morning: 'M', day: 'D', evening: 'K', night: 'N', long: 'D/K' })[band]
-            : tailShift
-              ? 'N→'
-              : hasJour
-                ? 'J'
-                : hasSleep
-                  ? 'SJ'
-                  : 'P';
-          const secondary = (primary || tailShift) && hasJour ? '+ jour' : null;
+            ? ({ morning: 'M', day: 'D', evening: 'K', night: 'N', long: 'H' })[band]
+            : 'M';
+          // A slot the PDF writes as "KA/DV": one of the two works it and the
+          // schedule does not say which. Both of them see it on their own
+          // calendar, so without a mark both would assume it is theirs and one
+          // would travel in for nothing — or worse, neither would.
+          const contested = dayShifts.filter((shift) => shift.contestedWith.length > 0);
           const spoken = dayShifts
             .map((shift) => `${shift.start} till ${shift.end}, ${shiftKindLabel(shift, shifts)}`)
             .join('. ');
@@ -823,25 +927,48 @@ function MonthCalendar({
             <button
               key={day}
               role="gridcell"
-              className={`calendar-cell calendar-cell--scheduled ${visualBand ? `calendar-cell--${visualBand}` : `calendar-cell--neutral calendar-cell--${hasSleep ? 'sleep' : 'jour'}`} ${isToday ? 'calendar-cell--today' : ''} ${isPast ? 'calendar-cell--past' : ''}`}
+              className={`calendar-cell calendar-cell--scheduled calendar-cell--${visualBand} ${isToday ? 'calendar-cell--today' : ''} ${isPast ? 'calendar-cell--past' : ''}`}
               aria-current={isToday ? 'date' : undefined}
-              aria-label={`${scheduleDay.weekday} ${day} ${MONTHS[schedule.month - 1]}. ${spoken}`}
+              aria-label={`${scheduleDay.weekday} ${day} ${MONTHS[schedule.month - 1]}. ${spoken}${
+                contested.length > 0 ? '. Oklart pass, kontrollera schemat' : ''
+              }`}
+              /* `spoken` already lists every block on the day, so a screen
+                 reader never had the gap this mark exists to close. */
               onClick={() => onOpenDay(day)}
             >
               <span className="calendar-cell__number">{day}</span>
+              {/* The cell's annotation corner. Both marks can be true of one
+                  day — a contested slot you also hold beredskap for — so they
+                  sit side by side rather than one suppressing the other. An
+                  earlier version dropped the beredskap mark whenever the
+                  warning was present, which hid a real obligation behind an
+                  unrelated one. */}
+              {(contested.length > 0 || hasJour || hiddenWork.length > 0) && (
+                <span className="calendar-cell__marks" aria-hidden="true">
+                  {hasJour && (
+                    <span className="calendar-cell__standby">
+                      <JourIcon />
+                    </span>
+                  )}
+                  {hiddenWork.length > 0 && (
+                    <span className="calendar-cell__more">
+                      <PlusIcon />
+                    </span>
+                  )}
+                  {contested.length > 0 && (
+                    <span className="calendar-cell__contested">
+                      <AlertIcon />
+                    </span>
+                  )}
+                </span>
+              )}
               <span className="calendar-cell__kind">
-                {visualBand ? <TimeIcon band={visualBand} /> : hasSleep ? <SleepIcon /> : <JourIcon />}
+                <TimeIcon band={visualBand} />
                 <span className="calendar-cell__kind-label">{shortLabel}</span>
                 <span className="calendar-cell__kind-compact" aria-hidden="true">
                   {compactLabel}
                 </span>
               </span>
-              {secondary && (
-                <span className="calendar-cell__secondary">
-                  <span className="calendar-cell__secondary-label">{secondary}</span>
-                  <span className="calendar-cell__secondary-compact" aria-hidden="true">+J</span>
-                </span>
-              )}
             </button>
           );
         })}
@@ -856,17 +983,29 @@ function MonthCalendar({
             {timeBandLabel(band).replace('pass', '').trim()}
           </li>
         ))}
-        {hasAfterNight && (
+        {jourStarts.length > 0 && (
           <li>
-            <span className="calendar-key__mark calendar-key__mark--morning"><TimeIcon band="morning" /></span>
-            Efter natt
+            <span className="calendar-key__mark calendar-key__mark--standby">
+              <JourIcon />
+            </span>
+            Beredskap
           </li>
         )}
-        {jourStarts.length > 0 && (
-          <li><span className="calendar-key__mark calendar-key__mark--jour"><JourIcon /></span>Jour</li>
+        {hasHiddenWork && (
+          <li>
+            <span className="calendar-key__mark calendar-key__mark--more">
+              <PlusIcon />
+            </span>
+            Flera pass
+          </li>
         )}
-        {hasSleep && (
-          <li><span className="calendar-key__mark calendar-key__mark--sleep"><SleepIcon /></span>Sovande jour</li>
+        {hasContested && (
+          <li>
+            <span className="calendar-key__mark calendar-key__mark--contested">
+              <AlertIcon />
+            </span>
+            Oklart pass
+          </li>
         )}
       </ul>
     </section>
@@ -879,6 +1018,7 @@ function NextShift({
   dayShifts,
   allShifts,
   me,
+  now,
   personColors,
   onOpenDay,
 }: {
@@ -887,16 +1027,33 @@ function NextShift({
   dayShifts: Shift[];
   allShifts: Shift[];
   me: string;
+  /* The page's clock, passed in rather than read here: this card's "I dag" and
+     the calendar's "idag" must be the same day, and two independent
+     `new Date()` calls can straddle midnight and disagree. */
+  now: Date;
   personColors: Map<string, number>;
   onOpenDay: (day: number) => void;
 }) {
   if (!next) {
+    // "Färdigt för din del" would be a lie if beredskap is still owed: no more
+    // trips in, but the phone can still ring. Jour never headlines the card, so
+    // this is the one place the remaining standby has to be said outright.
+    const standbyLeft = allShifts
+      .map((candidate) => ({ candidate, ...shiftBounds(schedule, candidate) }))
+      .filter(({ candidate, end }) => candidate.kind === 'jour' && end > now)
+      .sort((a, b) => a.start.getTime() - b.start.getTime());
     return (
       <section className="next-shift next-shift--empty" aria-labelledby="next-title">
         <div>
           <p className="next-shift__label">Nästa pass</p>
           <h1 id="next-title">Inga fler pass den här månaden</h1>
-          <span>{schedule.monthLabel} är färdigt för din del.</span>
+          <span>
+            {standbyLeft.length > 0
+              ? `Inga fler arbetspass, men du har beredskap kvar — nästa ${
+                  standbyLeft[0].candidate.weekday.toLowerCase()
+                } ${standbyLeft[0].candidate.dayNum} ${MONTHS[schedule.month - 1]}.`
+              : `${schedule.monthLabel} är färdigt för din del.`}
+          </span>
         </div>
         <CheckIcon />
       </section>
@@ -905,7 +1062,6 @@ function NextShift({
 
   const { shift, start, end } = next;
   const band = timeBandOf(shift);
-  const now = new Date();
   const isOngoing = start <= now && end > now;
   const startDay = localDate(schedule, shift.dayNum);
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -920,6 +1076,17 @@ function NextShift({
   const follow = dayShifts.find(
     (candidate) => candidate.start === shift.end && candidate.kind !== 'work'
   );
+  // All beredskap on the day of that shift, whenever it falls. It never takes
+  // the headline — the card answers "when do I next go in", and for the
+  // jour-heavy people it would otherwise own the card most of the month — but
+  // it is a real obligation and belongs in the notes.
+  //
+  // Not filtered to what is still ahead. The card describes a *day*, and
+  // morning beredskap is part of what that day asks of you even once it has
+  // passed; hiding it after 07:00 would make the same unchanged day read
+  // differently depending on the hour you happened to open the app, and would
+  // disagree with the day rows and the sheet, neither of which filters.
+  const jourToday = dayShifts.filter((candidate) => candidate.kind === 'jour');
 
   return (
     <section className={`next-shift next-shift--${band}`} aria-labelledby="next-title">
@@ -956,21 +1123,71 @@ function NextShift({
 
       <div className="next-shift__footer">
         <div className="next-shift__notes">
-          {follow?.kind === 'sleep' && band !== 'night' && (
-            <span>Sovande jour från {follow.start}.</span>
-          )}
-          {alongside.length > 0 && (
-            <span className="coworker-note">
-              <span>Du jobbar med</span>
-              <span className="coworker-pills">
-                {alongside.map((code) => (
-                  <PersonPill key={code} code={code} hue={personColors.get(code) ?? 0} />
-                ))}
+          {/*
+            * Two groups, not one stack. Everything here used to be siblings in
+            * a flat column, which put "Du jobbar med AH" directly beneath a
+            * beredskap line and made it read as belonging to the beredskap
+            * hours rather than to the shift in the headline.
+            *
+            * So: notes about *this shift* first and tight against the time they
+            * describe, then a separated group for obligations that are not this
+            * shift at all. Proximity does the grouping, which is the only thing
+            * a reader glancing at a card actually parses.
+            */}
+          <div className="next-shift__about-shift">
+            {/* First, and the only one that changes what you do: the shift may
+                not be yours at all. */}
+            {shift.contestedWith.length > 0 && (
+              <span className="next-shift__contested">
+                <AlertIcon />
+                <span>
+                  Delat pass med{' '}
+                  {shift.contestedWith.join(' och ')} — bara en av er jobbar. Kolla
+                  schemat.
+                </span>
+              </span>
+            )}
+            {alongside.length > 0 && (
+              <span className="coworker-note">
+                {/* "Du jobbar med Ej tillsatt" is nonsense. When the only thing
+                    beside you is an open post, the sentence has to be about the
+                    post rather than about company. */}
+                <span>
+                  {alongside.every((mate) => mate.unassigned)
+                    ? 'Passet bredvid dig är'
+                    : 'Du jobbar med'}
+                </span>
+                <span className="coworker-pills">
+                  {alongside.map((mate) => (
+                    <ColleaguePill
+                      key={mate.code}
+                      mate={mate}
+                      shift={shift}
+                      colors={personColors}
+                    />
+                  ))}
+                </span>
+              </span>
+            )}
+            {follow?.kind === 'sleep' && band !== 'night' && (
+              <span>Sovande jour från {follow.start}.</span>
+            )}
+            {continuesTomorrow(shift, allShifts) && (
+              <span>Fortsätter efter midnatt.</span>
+            )}
+          </div>
+
+          {/* Not part of the shift above: separate hours, served from home, that
+              merely fall on the same date. Set apart so it cannot be read as a
+              detail of the pass. */}
+          {jourToday.length > 0 && (
+            <span className="next-shift__standby">
+              <JourIcon />
+              <span>
+                Beredskap {jourToday.map((s) => `${s.start}–${s.end}`).join(', ')},
+                hemifrån.
               </span>
             </span>
-          )}
-          {continuesTomorrow(shift, allShifts) && (
-            <span>Fortsätter efter midnatt.</span>
           )}
         </div>
         <span className="next-shift__arrow" aria-hidden="true">
@@ -981,8 +1198,50 @@ function NextShift({
   );
 }
 
+/**
+ * One colleague, or an unresolved pair. "KA/DV" is a slot the schedule has not
+ * settled — one of the two will come — so it renders as both names joined by
+ * "eller" rather than as a single person with a slash in their name. Each name
+ * keeps its own colour so it still reads as the people you know.
+ */
 function PersonPill({ code, hue }: { code: string; hue: number }) {
   return <span className={`person-pill person-color--${hue}`}>{code}</span>;
+}
+
+function ColleaguePill({
+  mate,
+  shift,
+  colors,
+}: {
+  mate: Alongside;
+  shift: Shift;
+  colors: Map<string, number>;
+}) {
+  const names = mate.code.split('/');
+  // Empty for anyone there start to finish, which is most people — the hours
+  // are only worth printing when they differ from the shift you are reading.
+  const note = alongsideNote(mate, shift);
+  return (
+    <span className="colleague">
+      {mate.unassigned ? (
+        /* A post with nobody on it. Written as words, not as a pill: a pill
+           reads as a person, and the whole point is that there is not one. */
+        <span className="colleague__vacant">Ej tillsatt</span>
+      ) : names.length === 1 ? (
+        <PersonPill code={mate.code} hue={colors.get(mate.code) ?? 0} />
+      ) : (
+        <span className="person-pill-alt">
+          {names.map((name, i) => (
+            <Fragment key={name}>
+              {i > 0 && <span className="person-pill-alt__or">eller</span>}
+              <PersonPill code={name} hue={colors.get(name) ?? 0} />
+            </Fragment>
+          ))}
+        </span>
+      )}
+      {note && <span className="colleague__hours">({note})</span>}
+    </span>
+  );
 }
 
 function DayRow({
@@ -1003,10 +1262,17 @@ function DayRow({
   const spoken = dayShifts
     .map((shift) => `${shift.start} till ${shift.end}, ${shiftKindLabel(shift, allShifts)}`)
     .join('. ');
+  const jourBlocks = dayShifts.filter((shift) => shift.kind === 'jour');
+  // Nothing on this day but beredskap: no trip in, no worked hours, and
+  // `workdaysOf` does not count it. It still has to be here — the phone can
+  // ring and people plan around that — but it gets a single quiet line instead
+  // of a full card. For KA that is 12 of 27 rows shrunk rather than 12 cards
+  // claiming as much room as a worked day.
+  const standbyOnly = jourBlocks.length === dayShifts.length;
 
   return (
     <button
-      className={`day-row ${isToday ? 'day-row--today' : ''}`}
+      className={`day-row ${standbyOnly ? 'day-row--standby' : ''} ${isToday ? 'day-row--today' : ''}`}
       onClick={onOpen}
       aria-label={`${dayShifts[0].weekday} ${day} ${MONTHS[schedule.month - 1]}. ${spoken}`}
     >
@@ -1018,20 +1284,35 @@ function DayRow({
 
       <span className="day-row__content">
         <span className="day-row__shifts">
-          {dayShifts.map((shift, index) => {
+          {dayShifts.filter((shift) => shift.kind !== 'jour').map((shift, index) => {
             const band = shift.kind === 'work' ? timeBandOf(shift) : null;
             const tone = band ?? shift.kind;
             return (
               <span key={`${shift.start}-${index}`} className={`shift-block shift-block--${tone}`}>
                 <strong className="shift-block__time">{shift.start}–{shift.end}</strong>
-                <span className="shift-block__kind">
+                {/* Icon only. The row is read as a whole through the button's
+                    aria-label, which still spells out every shift, so dropping
+                    the visible word costs nothing spoken and leaves the times —
+                    the thing people actually scan for — uncrowded. */}
+                <span className="shift-block__kind" aria-hidden="true">
                   {band ? <TimeIcon band={band} /> : shift.kind === 'sleep' ? <SleepIcon /> : <JourIcon />}
-                  <strong>{shiftKindLabel(shift, allShifts)}</strong>
                 </span>
               </span>
             );
           })}
         </span>
+        {/* Beredskap sits under the day's real shifts as a line of text, not as
+            a block of its own: it is time owed from home, and a filled block
+            the same size as a worked pass overstates it. On a jour-only day
+            this is the row's only content, which is the honest picture. */}
+        {jourBlocks.length > 0 && (
+          <span className="day-row__standby" aria-hidden="true">
+            <JourIcon />
+            <span>
+              Beredskap {jourBlocks.map((s) => `${s.start}–${s.end}`).join(', ')}
+            </span>
+          </span>
+        )}
       </span>
 
       <span className="day-row__arrow" aria-hidden="true">
@@ -1138,28 +1419,73 @@ function DayDialog({
             {dayShifts.map((shift, index) => {
               const band = shift.kind === 'work' ? timeBandOf(shift) : null;
               const alongside = alongsideOn(schedule, shift, me);
+              // The modal is where exact times get checked, so every block
+              // stays — including beredskap, which is quieted with a modifier
+              // rather than dropped.
               return (
-                <section key={`${shift.start}-${index}`} className={`day-sheet__shift day-sheet__shift--${band ?? shift.kind}`}>
+                <section
+                  key={`${shift.start}-${index}`}
+                  className={`day-sheet__shift day-sheet__shift--${band ?? shift.kind} ${
+                    shift.kind === 'jour' ? 'day-sheet__shift--standby' : ''
+                  }`}
+                >
                   <div className="day-sheet__time">
                     <strong>{shift.start}–{shift.end}</strong>
+                    {/* Icon only, as in the day rows. Unlike those, this section
+                        has no aria-label of its own, so the name stays in the
+                        DOM as hidden text — it is the only thing telling a
+                        screen reader whether this block is work, jour or sleep. */}
                     <span className="day-sheet__kind">
                       {band ? <TimeIcon band={band} /> : shift.kind === 'sleep' ? <SleepIcon /> : <JourIcon />}
-                      {shiftKindLabel(shift, allShifts)}
+                      <span className="visually-hidden">{shiftKindLabel(shift, allShifts)}</span>
                     </span>
                   </div>
                   {alongside.length > 0 && (
                     <p className="day-sheet__coworkers">
-                    <span>{shift.kind === 'jour' ? 'På plats' : 'Du jobbar med'}</span>
+                    <span>
+                      {alongside.every((mate) => mate.unassigned)
+                        ? 'Passet bredvid dig är'
+                        : shift.kind === 'jour'
+                          ? 'På plats'
+                          : 'Du jobbar med'}
+                    </span>
                       <span className="coworker-pills">
-                        {alongside.map((code) => (
-                          <PersonPill key={code} code={code} hue={personColors.get(code) ?? 0} />
+                        {alongside.map((mate) => (
+                          <ColleaguePill
+                            key={mate.code}
+                            mate={mate}
+                            shift={shift}
+                            colors={personColors}
+                          />
                         ))}
                       </span>
                     </p>
                   )}
-                  {shift.kind === 'jour' && <p>Beredskap hemifrån, inte arbetad tid.</p>}
-                  {shift.kind === 'sleep' && <p>Sovande jour, med egen ersättning.</p>}
-                  {isNightShift(shift) && <p>Du sover på plats efter passet.</p>}
+                  {shift.contestedWith.length > 0 && (
+                    <p className="day-sheet__contested">
+                      <AlertIcon />
+                      <span>
+                        Schemat har både dig och{' '}
+                        {shift.contestedWith.map((code, i) => (
+                          <Fragment key={code}>
+                            {i > 0 && ' och '}
+                            <PersonPill code={code} hue={personColors.get(code) ?? 0} />
+                          </Fragment>
+                        ))}{' '}
+                        på det här passet. Bara en av er ska jobba — stäm av eller
+                        kolla originalschemat innan du åker.
+                      </span>
+                    </p>
+                  )}
+                  {shift.kind === 'jour' && <p>Du har beredskap hemifrån.</p>}
+                  {shift.kind === 'sleep' && <p>Du sover på plats.</p>}
+                  {/* Only when the sömn block itself is missing from the day.
+                      When it is there it carries "Du sover på plats" at the
+                      hour it actually starts, and saying it here as well was
+                      the same sentence twice a few lines apart. */}
+                  {isNightShift(shift) && !dayShifts.some((x) => x.kind === 'sleep') && (
+                    <p>Du sover på plats efter passet.</p>
+                  )}
                   {isContinuation(shift, allShifts) && shift.kind === 'work' && (
                     <p>Fortsättning från natten innan. Du är redan på plats.</p>
                   )}
@@ -1306,6 +1632,14 @@ const AlertIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
     <circle cx="12" cy="12" r="9" />
     <path d="M12 7.5v5.5M12 16.5h.01" strokeLinecap="round" />
+  </svg>
+);
+
+/* "There is another pass on this day the cell is not showing." A plus rather
+   than a warning glyph: the day is not wrong, it is only incompletely told. */
+const PlusIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" aria-hidden="true">
+    <path d="M12 6v12M6 12h12" strokeLinecap="round" />
   </svg>
 );
 
