@@ -91,11 +91,19 @@ export function buildIcs({ me, shifts, now = new Date() }: IcsOptions): string {
     const end = stamp(s.date, s.end, s.endsNextDay ? 1 : 0);
     const uid = `${s.date}-${s.start.replace(':', '')}-${me}@rosenbo`;
 
-    const summary = s.endsNextDay ? `Nattpass ${me}` : `Arbetspass ${me}`;
+    // A phone calendar shows the summary in month view and hides the rest
+    // behind a tap, so the "(?)" has to ride here or it is effectively unsaid.
+    const base = s.endsNextDay ? `Nattpass ${me}` : `Arbetspass ${me}`;
+    const summary = s.contestedWith.length ? `${base} (?)` : base;
     const description = [
       `${s.start}–${s.end}${s.endsNextDay ? ' (nästa dag)' : ''}`,
       `${s.hours} h`,
-      s.sharedWith.length ? `Delat pass med ${s.sharedWith.join(', ')}` : '',
+      // The slot is not settled: one of the named people works it. Someone who
+      // imported this once and never opens the app again sees only this line,
+      // so it has to say plainly that the shift might not be theirs.
+      s.contestedWith.length
+        ? `OKLART: du eller ${s.contestedWith.join(' eller ')} jobbar detta pass. Kolla schemat.`
+        : '',
     ]
       .filter(Boolean)
       .join('\n');

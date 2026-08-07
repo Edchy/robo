@@ -33,7 +33,11 @@ export type Block = {
   start: string;
   end: string;
   code: string;
-  /** Everyone named in the cell — length > 1 means a shared slot like "KA/DV". */
+  /**
+   * The names in the cell. Length > 1 is a slot the PDF has not resolved yet:
+   * "KA/DV" means *either* KA or DV will cover it, not that both are on. Only
+   * one of them actually turns up.
+   */
   codes: string[];
   hours: number;
 };
@@ -53,8 +57,17 @@ export type Shift = {
   end: string;           // "24:00" or later-day time; see `endsNextDay`
   endsNextDay: boolean;
   hours: number;
-  /** Co-workers sharing any part of this shift, e.g. ["DV"]. */
-  sharedWith: string[];
+  /**
+   * The other names written into your own cell, e.g. ["DV"] for a "KA/DV" slot
+   * read by KA. Not co-workers: these are the people who might cover this slot
+   * *instead of* you. A non-empty list means the schedule has not settled who
+   * works it, and both of you have to check the PDF or ask.
+   *
+   * Empty for almost every shift. Named `sharedWith` when it was thought to
+   * mean two people on at once, which is what produced "Du jobbar med DV RR"
+   * for an hour actually worked with RR alone.
+   */
+  contestedWith: string[];
   /**
    * Jour — on call from home rather than awake on the floor. Real obligation,
    * but not time spent working, so it is never added into worked hours.
@@ -322,7 +335,7 @@ export const bandOf = (shift: Shift): ShiftBand => {
 /**
  * Who else is on the floor while this shift runs.
  *
- * Distinct from `Shift.sharedWith`, which only names people written into the
+ * Distinct from `Shift.contestedWith`, which only names people written into the
  * *same* cell ("KA/DV") and is empty for almost every shift. The colleague you
  * actually work beside is on the other line covering the same hours: on Aug 1
  * ES works 09:00–24:00 on line 0 while CT covers it from line 1.
@@ -330,6 +343,11 @@ export const bandOf = (shift: Shift): ShiftBand => {
  * Jour is excluded — someone on call is at home, not beside you — as is AU,
  * which is a placeholder rather than a person. Overlap must be real, so blocks
  * that merely touch at a handover boundary do not count.
+ *
+ * An unresolved cell ("KA/DV") is one slot covered by one of the two, so it
+ * yields a single entry written the same way rather than two colleagues. Naming
+ * both as if they were each on the floor invents a person who is not coming and
+ * overstates the staffing — the honest answer is that it is not settled yet.
  *
  * The weekday morning has two people on the floor and both must show: the one
  * who slept here, on line 0, and whoever covers line 1's short block before AU
@@ -356,9 +374,16 @@ export const alongsideOn = (
       // this line it is never anything else.
       if (isStandbyBlock(lineIndex, b, true)) continue;
       if (toMin(b.end) <= from || toMin(b.start) >= to) continue;
-      for (const c of b.codes) {
-        if (c !== me && !ACTIVITY_CODES.has(c)) found.add(c);
-      }
+      // My own cell, including a "KA/DV" I am half of. The other name there is
+      // the person who would cover this slot *instead of* me, so reporting them
+      // as a colleague invents company: KA read "Du jobbar med DV RR" for an
+      // hour actually worked with RR alone.
+      if (b.codes.includes(me)) continue;
+      const others = b.codes.filter((c) => !ACTIVITY_CODES.has(c));
+      if (others.length === 0) continue;
+      // An unresolved cell that is not mine stays unresolved — one slot, one of
+      // two people, and the schedule does not yet say which.
+      found.add(others.join('/'));
     }
   });
 
@@ -640,7 +665,7 @@ export function shiftsFor(schedule: Schedule, code: string): Shift[] {
       end: s.endMin >= 1440 && s.endMin % 1440 === 0 ? '24:00' : fromMin(s.endMin),
       endsNextDay: s.endMin > 1440,
       hours: (s.endMin - s.startMin) / 60,
-      sharedWith: [...s.shared].sort(),
+      contestedWith: [...s.shared].sort(),
       standby: s.standby,
       kind: s.kind,
     };

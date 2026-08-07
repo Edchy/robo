@@ -20,7 +20,7 @@ const shift = (
   end,
   endsNextDay,
   hours,
-  sharedWith: [],
+  contestedWith: [],
 });
 
 test('short shifts band by midpoint, not start hour', () => {

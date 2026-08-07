@@ -228,15 +228,23 @@ test('an evening worked to 22:00 then jour is not a worked night', { skip: !avai
   }
 });
 
-test('reports co-workers on shared slots', { skip: !available }, async () => {
+test('flags slots where two names contest one cell', { skip: !available }, async () => {
   const s = await load();
-  // DV shares KA's 07:00–08:00 cell on day 6; without midnight stitching that
-  // stays on day 6 rather than folding back into day 5's evening. Named by its
-  // start time because the jour tail preceding it is a separate shift.
-  const shared = shiftsFor(s, 'KA').find((x) => x.dayNum === 6 && x.start === '07:00')!;
-  assert.deepEqual(shared.sharedWith, ['DV']);
-  // BEL only ever appears in shared KA/BEL cells.
-  assert.equal(shiftsFor(s, 'BEL').every((x) => x.sharedWith.includes('KA')), true);
+  // DV is written into KA's own 07:00–08:00 cell on day 6 as "KA/DV" — one of
+  // them works it and the PDF does not say which. Without midnight stitching
+  // that stays on day 6 rather than folding back into day 5's evening. Named by
+  // its start time because the jour tail preceding it is a separate shift.
+  const contested = shiftsFor(s, 'KA').find((x) => x.dayNum === 6 && x.start === '07:00')!;
+  assert.deepEqual(contested.contestedWith, ['DV']);
+  // BEL only ever appears in KA/BEL cells, so every BEL shift is unsettled.
+  assert.equal(shiftsFor(s, 'BEL').every((x) => x.contestedWith.includes('KA')), true);
+
+  // It is symmetric: whoever reads it sees the other name, never their own.
+  for (const p of s.people) {
+    for (const x of shiftsFor(s, p)) {
+      assert.equal(x.contestedWith.includes(p), false, `${p} contests with themselves`);
+    }
+  }
 });
 
 test('the weekday morning joiner counts as being on the floor', { skip: !available }, async () => {
@@ -254,10 +262,28 @@ test('the weekday morning joiner counts as being on the floor', { skip: !availab
   const dv = shiftsFor(s, 'DV').find((x) => x.dayNum === 5)!;
   assert.deepEqual(alongsideOn(s, dv, 'DV'), ['CT']);
 
-  // A shared cell puts both names on the floor: on the 6th "KA/DV" is the
-  // 07:00–08:00 block, so RR has each of them beside them for that hour.
+  // A shared cell is one slot that has not been settled, not two people: on the
+  // 6th "KA/DV" is the 07:00–08:00 block, so RR gets *one* colleague for that
+  // hour and does not yet know which of the two it is. Reporting both would
+  // invent a person who is not coming.
   const rr = shiftsFor(s, 'RR').find((x) => x.dayNum === 6 && x.start === '06:30')!;
-  assert.deepEqual(alongsideOn(s, rr, 'RR'), ['DV', 'KA']);
+  assert.deepEqual(alongsideOn(s, rr, 'RR'), ['KA/DV']);
+
+  // Seen from inside the pair the slot resolves itself: KA reading their own
+  // schedule is the one covering it, so DV is never reported as beside them.
+  const kaShared = shiftsFor(s, 'KA').find((x) => x.dayNum === 6 && x.start === '07:00')!;
+  const kaSees = alongsideOn(s, kaShared, 'KA');
+  assert.equal(kaSees.includes('DV'), false, 'the other half of your own slot is not a colleague');
+  assert.equal(kaSees.some((c) => c.includes('KA')), false, 'nobody is their own colleague');
+
+  // Nobody is ever reported twice, once alone and once inside a pair.
+  for (const person of s.people) {
+    for (const x of shiftsFor(s, person)) {
+      const seen = alongsideOn(s, x, person);
+      const flat = seen.flatMap((c) => c.split('/'));
+      assert.equal(new Set(flat).size, flat.length, `${person} ${x.date} lists someone twice`);
+    }
+  }
 
   // The same initials on both cells is the jour person staying on to work the
   // last hour, not a second night — the PDF writes it exactly as it writes a

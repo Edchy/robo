@@ -21,7 +21,7 @@ const shift = (dayNum: number, start: string, end: string, hours: number): Shift
   end,
   endsNextDay: false,
   hours,
-  sharedWith: [],
+  contestedWith: [],
 });
 
 test('a 00:00 start after a 24:00 finish is a continuation', () => {
