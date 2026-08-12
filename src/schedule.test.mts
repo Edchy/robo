@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { parseSchedule, shiftsFor, workdaysOf, splitHours, continuesTomorrow, isContinuation, isNightShift, alongsideOn, alongsideNote, type Alongside, type TextItem } from './schedule.ts';
+import { parseSchedule, shiftsFor, workdaysOf, splitHours, continuesTomorrow, isContinuation, isNightShift, alongsideOn, alongsideNote, staffingOn, type Alongside, type OnDuty, type TextItem } from './schedule.ts';
 
 /** Just the names, for assertions that do not care about the hours. */
 const codes = (mates: Alongside[]) => mates.map((m) => m.code);
@@ -420,5 +420,107 @@ test('merging preserves total hours', { skip: !available }, async () => {
         for (const b of line.blocks)
           if (b.codes.includes(person)) raw += b.hours;
     assert.equal(merged, raw, `${person}: merged ${merged} h != raw ${raw} h`);
+  }
+});
+
+const clockOf = (minutes: number) =>
+  `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+
+const spansOf = (row: OnDuty) =>
+  row.spans.map((span) => `${clockOf(span.fromMin)}-${clockOf(span.toMin)}`).join(',');
+
+test('a free day still names everyone the house has on', { skip: !available }, async () => {
+  const s = await load();
+
+  // Aug 1, read by someone not on it. Two people awake on the floor across the
+  // day, the tail of FF's night, and LF covering it from home — the roster a
+  // day off actually raises questions about.
+  const first = staffingOn(s, 1);
+  assert.deepEqual(
+    first.map((row) => [row.code, spansOf(row), row.standby]),
+    [
+      ['FF', '00:00-09:00', false],
+      ['CT', '09:00-22:00', false],
+      ['ES', '09:00-24:00', false],
+      ['LF', '00:00-09:00', true],
+      ['FF', '22:00-24:00', true],
+    ]
+  );
+
+  // On the floor first, then on call: someone you can walk in on is a different
+  // answer from someone you would have to ring, and the order says which.
+  const firstStandby = first.findIndex((row) => row.standby);
+  assert.equal(
+    first.slice(firstStandby).every((row) => row.standby),
+    true,
+    'the on-call rows do not all follow the on-floor ones'
+  );
+});
+
+test('one person doing both work and jour on a day is told as both', { skip: !available }, async () => {
+  const s = await load();
+
+  // Aug 10: KA is on call 00:00–07:00 — the tail of the 9th's night — and then
+  // comes in to work 16:00–24:00. Merging those into one span would have to
+  // call the whole stretch one thing or the other, and either answer is a lie:
+  // it would invent nine hours of presence, or lose a night of cover.
+  const ka = staffingOn(s, 10).filter((row) => row.code === 'KA');
+  assert.deepEqual(
+    ka.map((row) => [spansOf(row), row.standby]),
+    [
+      ['16:00-24:00', false],
+      ['00:00-07:00', true],
+    ]
+  );
+});
+
+test('staffing agrees with the shifts it is derived from', { skip: !available }, async () => {
+  const s = await load();
+
+  // The roster and a person's own schedule are two readings of the same PDF and
+  // must never disagree about what someone is doing at a given hour — a free
+  // day showing "RR, beredskap" while RR's own month shows a worked pass would
+  // send someone to the wrong person.
+  for (const day of s.days) {
+    for (const row of staffingOn(s, day.dayNum)) {
+      // An unresolved "KA/DV" slot belongs to neither schedule alone.
+      if (row.unassigned || row.code.includes('/')) continue;
+      const own = shiftsFor(s, row.code).filter((x) => x.dayNum === day.dayNum);
+      for (const span of row.spans) {
+        const match = own.find((x) => x.start === clockOf(span.fromMin));
+        assert.ok(match, `${row.code} ${day.date}: ${clockOf(span.fromMin)} is on the roster but not in their own schedule`);
+        assert.equal(
+          match.kind === 'jour',
+          row.standby,
+          `${row.code} ${day.date} ${clockOf(span.fromMin)}: roster and schedule disagree on jour`
+        );
+      }
+    }
+  }
+});
+
+test('an unfilled post is listed as a vacancy, never as a name', { skip: !available }, async () => {
+  const s = await load();
+
+  for (const day of s.days) {
+    for (const row of staffingOn(s, day.dayNum)) {
+      assert.equal(
+        row.unassigned,
+        row.code === 'XX',
+        `${day.date}: ${row.code} is flagged inconsistently as unassigned`
+      );
+      // AU is a placeholder for an activity, not somebody who turns up.
+      assert.equal(row.code.includes('AU'), false, `${day.date}: AU leaked into the roster`);
+      // Vacancies sort last — the absence of a person is the least useful thing
+      // on the list and must not lead it.
+      if (row.unassigned) {
+        const rows = staffingOn(s, day.dayNum);
+        assert.equal(
+          rows.slice(rows.indexOf(row)).every((x) => x.unassigned),
+          true,
+          `${day.date}: a named person is listed after a vacancy`
+        );
+      }
+    }
   }
 });

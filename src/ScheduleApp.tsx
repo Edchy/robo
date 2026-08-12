@@ -13,11 +13,13 @@ import {
   isNightShift,
   personHues,
   shiftsFor,
+  staffingOn,
   splitHours,
   workdaysOf,
   ScheduleError,
   TICK_MS,
   type Alongside,
+  type OnDuty,
   type Schedule,
   type Shift,
 } from './schedule';
@@ -505,9 +507,13 @@ function ScheduleView({
     () => [...byDay.entries()].sort((a, b) => a[0] - b[0]),
     [byDay]
   );
-  // Prev/next in the day sheet still walks the whole month, past days included:
-  // once a day is open, stepping back into yesterday is the obvious move.
-  const browsableDays = useMemo(() => groups.map(([day]) => day), [groups]);
+  // Prev/next in the day sheet walks every day of the month, past and free days
+  // included: once a day is open, stepping into the one beside it is the
+  // obvious move, and a free day now has something to show of its own.
+  const browsableDays = useMemo(
+    () => schedule.days.map((day) => day.dayNum),
+    [schedule.days]
+  );
   const openDayIndex = openDay === null ? -1 : browsableDays.indexOf(openDay);
 
   /**
@@ -862,16 +868,23 @@ function MonthCalendar({
               ? dayShifts.every((shift) => shiftBounds(schedule, shift).end <= now)
               : localDate(schedule, day) < today;
 
+          // A day you are not on is still a day the house is staffed, and the
+          // question people actually have about it is who else is in — for
+          // swapping a pass, for knowing who to ring, or simply to see whether
+          // the day off lines up with someone's. So the cell opens the same
+          // sheet as a worked day; it just has nothing of yours to show.
           if (dayShifts.length === 0) {
             return (
-              <span
+              <button
                 key={day}
                 role="gridcell"
-                className={`calendar-cell calendar-cell--empty ${isToday ? 'calendar-cell--today' : ''} ${isPast ? 'calendar-cell--past' : ''}`}
+                className={`calendar-cell calendar-cell--empty calendar-cell--free ${isToday ? 'calendar-cell--today' : ''} ${isPast ? 'calendar-cell--past' : ''}`}
                 aria-current={isToday ? 'date' : undefined}
+                aria-label={`${scheduleDay.weekday} ${day} ${MONTHS[schedule.month - 1]}. Du är ledig. Visa vilka som jobbar.`}
+                onClick={() => onOpenDay(day)}
               >
                 <span className="calendar-cell__number">{day}</span>
-              </span>
+              </button>
             );
           }
 
@@ -1244,6 +1257,56 @@ function ColleaguePill({
   );
 }
 
+/** Minutes from midnight as clock time. 24:00 stays 24:00, as the PDF writes it. */
+const clock = (minutes: number) =>
+  `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+
+/**
+ * One person on a day you are not working.
+ *
+ * The hours are their own, unclipped — there is no shift of yours to clip them
+ * against — so they read as "when is this person here", which is exactly the
+ * question a day off raises.
+ */
+function OnDutyRow({
+  person,
+  colors,
+}: {
+  person: OnDuty;
+  colors: Map<string, number>;
+}) {
+  const names = person.code.split('/');
+  const hours = person.spans
+    .map((span) => `${clock(span.fromMin)}–${clock(span.toMin)}`)
+    .join(', ');
+
+  return (
+    <li className={`on-duty ${person.standby ? 'on-duty--standby' : ''}`}>
+      <span className="on-duty__who">
+        {person.unassigned ? (
+          <span className="colleague__vacant">Ej tillsatt</span>
+        ) : (
+          names.map((name, index) => (
+            <Fragment key={name}>
+              {index > 0 && <span className="person-pill-alt__or">eller</span>}
+              <PersonPill code={name} hue={colors.get(name) ?? 0} />
+            </Fragment>
+          ))
+        )}
+      </span>
+      <span className="on-duty__hours">{hours}</span>
+      {/* Said in words, not only by the icon: "on call from home" is the whole
+          difference between someone you can drop in on and someone you cannot. */}
+      {person.standby && (
+        <span className="on-duty__tag">
+          <JourIcon />
+          <span>beredskap</span>
+        </span>
+      )}
+    </li>
+  );
+}
+
 function DayRow({
   day,
   dayShifts,
@@ -1385,6 +1448,15 @@ function DayDialog({
   const ref = useRef<HTMLDialogElement>(null);
   const totals = splitHours(dayShifts);
   const scheduleDay = schedule.days.find((candidate) => candidate.dayNum === day);
+  // Only worth computing for a day you are not on. When you are working, the
+  // per-shift "Du jobbar med" lines already answer this and answer it better:
+  // they are clipped to the hours you are actually together, which a whole-day
+  // roster is not.
+  const free = dayShifts.length === 0;
+  const onDuty = useMemo(
+    () => (free ? staffingOn(schedule, day) : []),
+    [free, schedule, day]
+  );
 
   useEffect(() => {
     const dialog = ref.current;
@@ -1415,6 +1487,30 @@ function DayDialog({
         </header>
 
         <div className="day-sheet__body">
+          {free ? (
+            <div className="day-off">
+              <p className="day-off__lead">Du är ledig.</p>
+              {onDuty.length === 0 ? (
+                <p className="day-off__empty">Ingen är inskriven på den här dagen.</p>
+              ) : (
+                <>
+                  <h3 className="day-off__title">Så här är det bemannat</h3>
+                  <ul className="day-off__list">
+                    {onDuty.map((person) => (
+                      <OnDutyRow
+                        // One person can appear twice on a day — once on the
+                        // floor, once on call — so the code alone is not a key.
+                        key={`${person.code}-${person.standby}`}
+                        person={person}
+                        colors={personColors}
+                      />
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          ) : (
+          <>
           <div className="day-sheet__shifts">
             {dayShifts.map((shift, index) => {
               const band = shift.kind === 'work' ? timeBandOf(shift) : null;
@@ -1499,6 +1595,8 @@ function DayDialog({
             {totals.sleep > 0 && <div><dt>Sömn</dt><dd>{formatHours(totals.sleep)} tim</dd></div>}
             {totals.jour > 0 && <div><dt>Jour</dt><dd>{formatHours(totals.jour)} tim</dd></div>}
           </dl>
+          </>
+          )}
         </div>
 
         <nav className="day-sheet__navigation" aria-label="Bläddra mellan dagar">

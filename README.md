@@ -116,6 +116,10 @@ the app ever gains a backend, an upload, analytics, or any third-party script,
 the note must change — an inaccurate privacy claim is worse than none. Hosting
 the page is fine: the host sees ordinary request logs, never the PDF.
 
+`DELIVERY.md` works through the one change most likely to test this: replacing
+the download-and-upload dance with a link in the schedule email. It ends up
+being a question about who hosts the file rather than a question about code.
+
 ## Hur tolkningen fungerar
 
 `src/schedule.ts` reads the PDF as a positional table — every cell lands on a

@@ -480,6 +480,110 @@ export const alongsideOn = (
 };
 
 /**
+ * One person's presence on a day, read from the schedule as a whole rather than
+ * from anybody's own shifts.
+ *
+ * Answers a different question from `alongsideOn`: not "who is here while I am
+ * here", which needs a shift of mine to clip against, but "who is here at all
+ * today" — the thing you want on a day off, when swapping or when working out
+ * who to call.
+ */
+export type OnDuty = {
+  /** Staff code, or "KA/DV" for a slot the schedule has not settled. */
+  code: string;
+  /** Merged runs of presence, in minutes from midnight. */
+  spans: { fromMin: number; toMin: number }[];
+  /**
+   * On call from home for these hours rather than awake on the floor.
+   *
+   * A property of the entry, not of the person: one person can hold both on one
+   * day and then appears twice, once for each. KA on Aug 10 is on call
+   * 00:00–07:00 and then works 16:00–24:00, and collapsing that into a single
+   * row would have to call the whole day one or the other — either inventing
+   * eight hours of presence or losing a night of cover.
+   */
+  standby: boolean;
+  /** The post is on the schedule with nobody in it ("XX"). */
+  unassigned: boolean;
+};
+
+/**
+ * Everyone the schedule puts on a given day.
+ *
+ * Unlike `alongsideOn` this keeps jour: on a day you are not working, "who is
+ * on call tonight" is as much of an answer as "who is on the floor", and the
+ * two are told apart by `standbyOnly` rather than by dropping one of them.
+ * Blocks that are only the tail of the previous night still belong to the day
+ * they are printed on — the person really is reachable those hours.
+ */
+export const staffingOn = (schedule: Schedule, dayNum: number): OnDuty[] => {
+  const day = schedule.days.find((d) => d.dayNum === dayNum);
+  if (!day) return [];
+
+  // Work and jour spans are collected apart so a person doing both on one day
+  // is not reported as being on call all of it.
+  const found = new Map<string, { work: Span[]; jour: Span[] }>();
+
+  day.lines.forEach((line, lineIndex) => {
+    for (const b of line.blocks) {
+      const others = b.codes.filter((c) => !ACTIVITY_CODES.has(c));
+      if (others.length === 0) continue;
+      const named = others.filter(isPerson);
+      const unassigned = named.length === 0;
+      const code = unassigned ? UNASSIGNED_CODE : named.join('/');
+      // `startedNight` is true for the same reason as in `alongsideOn`: a
+      // midnight block on the jour line is always the tail of a night.
+      const jour = isStandbyBlock(lineIndex, b, true);
+      const entry = found.get(code) ?? { work: [], jour: [] };
+      (jour ? entry.jour : entry.work).push({
+        fromMin: toMin(b.start),
+        toMin: toMin(b.end),
+      });
+      found.set(code, entry);
+    }
+  });
+
+  return [...found.entries()]
+    .flatMap(([code, { work, jour }]) => {
+      const unassigned = code === UNASSIGNED_CODE;
+      // Consecutive cells of the same kind are one stretch of presence — the
+      // PDF writes "07:00–08:00, 08:00–09:00" for what is plainly one morning.
+      // Work and jour are never merged into each other: they are different
+      // things to be told about, and the boundary between them is the point.
+      const rows: OnDuty[] = [];
+      if (work.length > 0) {
+        rows.push({ code, spans: mergeSpans(work), standby: false, unassigned });
+      }
+      if (jour.length > 0) {
+        rows.push({ code, spans: mergeSpans(jour), standby: true, unassigned });
+      }
+      return rows;
+    })
+    .sort((a, b) => {
+      // On the floor first, then on call, then the posts nobody is on. Within
+      // each group, the earliest to arrive leads.
+      if (a.unassigned !== b.unassigned) return Number(a.unassigned) - Number(b.unassigned);
+      if (a.standby !== b.standby) return Number(a.standby) - Number(b.standby);
+      return a.spans[0].fromMin - b.spans[0].fromMin || a.code.localeCompare(b.code, 'sv');
+    });
+};
+
+type Span = { fromMin: number; toMin: number };
+
+/** Sorted, with anything touching or overlapping collapsed into one run. */
+const mergeSpans = (spans: Span[]): Span[] =>
+  [...spans]
+    .sort((a, b) => a.fromMin - b.fromMin)
+    .reduce<Span[]>((acc, span) => {
+      const last = acc[acc.length - 1];
+      if (last && span.fromMin <= last.toMin) {
+        last.toMin = Math.max(last.toMin, span.toMin);
+        return acc;
+      }
+      return [...acc, { ...span }];
+    }, []);
+
+/**
  * Worked and standby hours for a set of shifts, kept apart.
  *
  * Never summed into one figure: jour hours are spent at home, so adding them

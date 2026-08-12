@@ -1249,6 +1249,26 @@ svg {
 }
 
 /*
+ * A day you are not working. Still a button — it opens the day to show who is
+ * on — but it must not start advertising itself: the calendar's job is to show
+ * *your* month, and a free day given any weight of its own would compete with
+ * the days that actually ask something of you. So it looks exactly as it did,
+ * and the affordance only appears under a pointer that has already arrived.
+ */
+.calendar-cell--free {
+  appearance: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms var(--ease-out), background-color 160ms var(--ease-out);
+}
+
+.calendar-cell--free:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-muted);
+}
+
+/*
  * A day whose only entry is beredskap. It keeps the empty cell's look — no
  * fill, no band — because that is what it is: a day at home. The corner mark is
  * the whole signal, and it is deliberately quiet; jour is an obligation, not a
@@ -2208,6 +2228,96 @@ svg {
   margin: 0.15rem 0 0;
   font-size: 1rem;
   font-weight: 720;
+}
+
+/*
+ * The day sheet opened on a day you are not working. The headline fact is that
+ * you are off — stated first and plainly, so nobody reads the roster below as
+ * their own hours — and the roster answers the only question a free day raises:
+ * who is in, and until when.
+ */
+.day-off {
+  margin-top: 1rem;
+}
+
+.day-off__lead {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 720;
+  letter-spacing: -0.025em;
+}
+
+.day-off__title {
+  margin: 1.5rem 0 0.5rem;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.day-off__empty {
+  margin: 0.5rem 0 0;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.day-off__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  gap: 1px;
+  list-style: none;
+}
+
+.on-duty {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.on-duty:last-child {
+  border-bottom: 0;
+}
+
+.on-duty__who {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+/* Pushed to the far edge so the hours line up down the column and the list can
+   be read as a timetable rather than as sentences. */
+.on-duty__hours {
+  margin-left: auto;
+  color: var(--ink-soft);
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Someone on call is quieter than someone in the building — you cannot hand
+   anything over to them, and the list should not suggest otherwise. */
+.on-duty--standby .on-duty__hours {
+  color: var(--ink-muted);
+}
+
+.on-duty__tag {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+}
+
+.on-duty__tag svg {
+  width: 0.875rem;
+  height: 0.875rem;
 }
 
 @media (max-width: 760px) {
