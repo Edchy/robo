@@ -1,0 +1,15 @@
+/*
+ * Everything the app draws lives in versions/reimagined/App.css. All that is
+ * left here is the placeholder shown while that bundle loads, which has to
+ * stand on its own — it renders before any of the app's own styles arrive.
+ */
+.app-loading {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  background: oklch(97.5% 0.008 245);
+  color: oklch(43% 0.025 255);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif;
+  font-size: 0.9375rem;
+}

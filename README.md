@@ -1,0 +1,143 @@
+# Robo — Mitt schema
+
+Drop in the monthly schedule PDF, pick your initials, see only your own shifts.
+
+Everything runs in the browser: the PDF is parsed locally with pdf.js and is
+never uploaded. Deploys as a static site.
+
+The interface is `src/ScheduleApp.tsx`. Two were trialled side by side behind a
+`?version=` test bar; the redesign won, and the original is gone from `main` —
+it remains on `codex/original-ui` if it is ever wanted again.
+
+Av säkerhets- och prestandaskäl tar appen emot PDF-filer på högst 25 MB och 20
+sidor. Ett månadsschema ska ligga långt under båda gränserna.
+
+## Utveckling
+
+```bash
+npm install
+npm run dev      # http://localhost:5173
+npm run build    # -> dist/
+```
+
+Node 22.18 eller senare krävs.
+
+## Tester
+
+```bash
+npm test
+```
+
+`schedule.test.mts` is kept out of the repository (it is gitignored, because its
+assertions name real staff). Locally it runs against a real schedule PDF and skips itself if the
+file is not present; point it elsewhere with
+`SCHEDULE_PDF="/path/to/schema.pdf"`. `storage.test.mts` and `session.test.mts`
+cover caching, expiry and teardown, and need nothing.
+
+## Export
+
+Two buttons under the shift list, both entirely client-side:
+
+- **Lägg till i kalendern** downloads an `.ics` file (`src/ics.ts`) that imports
+  into Apple Calendar, Google Calendar and Outlook. Night shifts become single
+  events spanning midnight, which is precisely what the PDF cannot show.
+- **Skriv ut** calls `window.print()`. The print stylesheet swaps to white,
+  hides the controls, adds the person's initials to the heading and
+  keeps shifts from splitting across pages — so "Save as PDF" yields a clean
+  sheet without any PDF library in the bundle.
+
+Calendar details worth knowing:
+
+- **Floating local time** (no `Z`, no `TZID`): 07:00 means 07:00 where the
+  person works, regardless of the phone's timezone.
+- **Stable UIDs** (`date-start-person@robo`) so re-importing a corrected
+  month updates the existing events instead of duplicating them.
+- **No `VALARM`s** — importing must never add surprise alerts to someone's
+  phone.
+- Lines are folded at 75 **octets**, measured on UTF-8 bytes, so `å/ä/ö` can
+  never be split mid-character.
+
+On iPhone, Safari opens the file in a preview where the user taps *Add All*;
+Android and desktop download it directly.
+
+## Lagring på enheten
+
+Three things are kept, all on-device only, across two stores:
+
+| Where | Key | Contents | Lifetime |
+| --- | --- | --- | --- |
+| `localStorage` | `robo.me` | chosen initials, e.g. `"AN"` | until **Glöm mig** |
+| `localStorage` | `robo.schedule` | the parsed month (~22 kB JSON) | until the month ends, or **Glöm mig** |
+| `IndexedDB` | `robo-local-files` | the source PDF's bytes | until the month ends, or **Glöm mig** |
+
+**Why two stores** (`src/storage.ts`, `src/pdf-storage.ts`). localStorage is
+synchronous and string-only with a ~5 MB quota — a good fit for the parsed
+month, and reading it synchronously at startup is what lets the calendar paint
+without a loading state. The PDF cannot go there: it is binary and allowed up to
+25 MB, so it lives in IndexedDB, which stores `ArrayBuffer` natively and has a
+far larger quota. The trade is that it loads asynchronously, so **Se PDF** may
+briefly fall back to the file picker on a cold start.
+
+The PDF is stored as **raw bytes, not the `File` object**. A `File` from an
+`<input>` is a handle onto something on disk, and IndexedDB may persist it as
+that handle: it survives a reload looking intact and only fails when something
+finally reads it. On iOS, where the picker copies into a sandbox the OS later
+reclaims, that is the normal outcome.
+
+Both stores expire on one rule — `expiryOf()` in `src/storage.ts`, midnight
+after the schedule's month ends — so they can never disagree about which month
+is current. Clearing likewise goes through `src/session.ts` (`forgetSchedule`,
+`forgetEverything`) rather than being paired by hand at each call site, since
+half a teardown leaves a stale PDF offered against no calendar. `loadSchedule()`
+also discards anything corrupt or written by an older `CACHE_VERSION`, and every
+access is wrapped so private browsing or a full quota degrades to "ask for the
+PDF again" instead of breaking.
+
+## Information till personalen
+
+The app carries its own privacy note: a "Läs mer" toggle under the dropzone,
+plus a "Glöm mig" button in the footer that clears the stored initials. The
+same wording, if you need it for an email or a notice board:
+
+> **Mitt schema** läser månadens schema-PDF direkt i din telefon eller dator.
+> Filen skickas aldrig vidare — varken till oss, till arbetsgivaren eller till
+> någon annan. Appen fungerar även i flygplansläge när sidan väl har laddats.
+>
+> För att du inte ska behöva leta upp PDF-filen varje gång sparas månadens
+> schema, dina initialer och original-PDF:en i webbläsaren — på din egen
+> enhet. Inget laddas upp. Allt raderas automatiskt när månaden är slut.
+> Trycker du på **Glöm mig** försvinner allt direkt.
+>
+> Tänk på att PDF-filen innehåller *hela* arbetsplatsens schema, precis som när
+> du får den via mejl. Appen visar bara dina pass — men filen i sig är
+> densamma. Dela den därför inte vidare.
+
+**Keep this claim true.** It holds because parsing is entirely client-side. If
+the app ever gains a backend, an upload, analytics, or any third-party script,
+the note must change — an inaccurate privacy claim is worse than none. Hosting
+the page is fine: the host sees ordinary request logs, never the PDF.
+
+`DELIVERY.md` works through the one change most likely to test this: replacing
+the download-and-upload dance with a link in the schedule email. It ends up
+being a question about who hosts the file rather than a question about code.
+
+## Hur tolkningen fungerar
+
+`src/schedule.ts` reads the PDF as a positional table — every cell lands on a
+known x-coordinate, and each day occupies two rows of round-the-clock cover.
+Notable details:
+
+- **Durations come from the timestamps**, not the printed hour cells, which are
+  blank or zero on unstaffed slots.
+- **Adjacent blocks merge.** The PDF splits one shift across up to three cells.
+- **Night shifts bridge midnight** when they start at 16:00 or later and the
+  result stays within 16 h — so an evening-to-morning shift reads as one pass,
+  while two back-to-back day shifts stay separate.
+- **`AU` is an activity**, not a person, and is excluded from the picker
+  (`ACTIVITY_CODES`).
+- **Shared slots** such as `BO/CE` count for both people and name the co-worker.
+- After parsing, every minute of every day is checked for staff coverage; gaps
+  surface in the UI rather than failing silently.
+
+The column model is specific to this PDF template. If the layout changes, the
+parser will report that it found no schedule rather than show wrong hours.

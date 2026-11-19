@@ -1,0 +1,2933 @@
+:root {
+  --bg: oklch(97.5% 0.008 245);
+  --surface: oklch(100% 0 0);
+  --surface-muted: oklch(94.5% 0.012 245);
+  --ink: oklch(21% 0.026 255);
+  --ink-soft: oklch(42% 0.028 255);
+  --ink-muted: oklch(49% 0.022 255);
+  --line: oklch(87% 0.014 245);
+  --line-strong: oklch(74% 0.02 245);
+  --focus: oklch(52% 0.19 254);
+
+  /* The four bands are one navy ramp, lightest to darkest, in the order the
+   * day runs: morgon → dag → kväll → natt. One hue (265), so the set reads as
+   * a single scale rather than four unrelated colours, and lightness alone
+   * carries the ordering — which is what makes it survive a greyscale
+   * printout and every form of colour blindness.
+   *
+   * The four steps are spaced by equal *contrast ratio* (1.99:1 between each
+   * neighbour), not by equal lightness numbers. Evenly-spaced L values look
+   * bunched at the dark end, and with a single hue the spacing is the only
+   * thing keeping morgon and dag apart — they are the two most common bands
+   * and sit side by side in the calendar, so that pair sets the requirement.
+   *
+   * Morgon was 90% and sat 1.26:1 off the page — pale enough that a morning
+   * cell read as an empty one. Pulling it to 83% (1.57:1) gives it presence,
+   * and the ramp below it was re-solved from there rather than just darkened
+   * at the top, which would have squeezed the morgon–dag step to 1.55 and put
+   * the two commonest bands back within confusing distance of each other.
+   *
+   * Chroma rises toward the middle: the pale end would go muddy if saturated,
+   * and natt needs to stay ink-dark rather than turn into a bright blue. */
+  --morning: oklch(83% 0.05 265);
+  --morning-ink: oklch(25% 0.04 265);
+  --day: oklch(64% 0.08 265);
+  --day-ink: oklch(25% 0.04 265);
+  --evening: oklch(47.8% 0.115 265);
+  --evening-ink: oklch(100% 0 0);
+  --night: oklch(31% 0.09 265);
+  --night-ink: oklch(100% 0 0);
+  --long: var(--day);
+  --long-ink: var(--day-ink);
+
+  /* Jour and sovande jour are not times of day, so they stay off the ramp
+   * entirely — true neutral grey, zero chroma. Now that the four bands span
+   * the whole navy lightness axis, any blue-tinted jour lands on top of one
+   * of them (it used to sit 1.06:1 from morgon, i.e. the same swatch).
+   * Neutral also says the right thing: not a band, rather than a fifth one.
+   * They are separated from each other by lightness, same as the ramp. */
+  /* These two only ever paint blocks in the day rows and the day sheet, which
+     are stacked in a column with gaps between them and carry their own icon
+     and times — never tiled edge to edge like calendar cells. So they are set
+     for legibility against the page and their own ink, not for the
+     grid-neighbour separation the four bands need from each other. */
+  --jour: oklch(95% 0 0);
+  --jour-ink: oklch(28% 0 0);
+  --sleep: oklch(90% 0 0);
+  --sleep-ink: oklch(24% 0 0);
+
+  --pick-0: oklch(86% 0.1 202);
+  --pick-1: oklch(78% 0.11 245);
+  --pick-2: oklch(86% 0.1 78);
+  --pick-3: oklch(83% 0.085 315);
+  --pick-4: oklch(85% 0.09 150);
+  --pick-5: oklch(82% 0.095 350);
+  --pick-6: oklch(84% 0.09 22);
+  --pick-7: oklch(82% 0.1 48);
+  --pick-8: oklch(85% 0.09 105);
+  --pick-9: oklch(83% 0.085 178);
+  --pick-10: oklch(82% 0.1 220);
+  --pick-11: oklch(82% 0.1 270);
+  --pick-12: oklch(84% 0.09 330);
+  --pick-13: oklch(81% 0.1 8);
+
+  --danger-bg: oklch(95% 0.03 25);
+  --danger-ink: oklch(42% 0.15 25);
+  /* The one red in the calendar, reserved for "there is a pass here you cannot
+     see". 6.1:1 against the white glyph it carries. */
+  --attention: oklch(52% 0.19 25);
+  --raised-surface: oklch(93% 0.016 245);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+button:focus-visible,
+summary:focus-visible,
+label:has(input:focus-visible) {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+svg {
+  display: block;
+}
+
+.welcome-shell,
+.picker-shell,
+.app-shell {
+  width: min(100%, 72rem);
+  min-height: 100dvh;
+  margin: 0 auto;
+}
+
+.welcome-shell {
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem clamp(1.25rem, 4vw, 3.5rem) 3rem;
+}
+
+.welcome-grid {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1.06fr) minmax(18rem, 0.76fr);
+  align-items: center;
+  gap: clamp(3rem, 8vw, 8rem);
+  padding-block: clamp(4rem, 10vh, 7rem);
+}
+
+.welcome-copy {
+  max-width: 37rem;
+}
+
+.picker-copy > p,
+.section-head p,
+.month-totals header p,
+.day-sheet__head p {
+  margin: 0 0 0.5rem;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  font-weight: 680;
+}
+
+.welcome-copy h1 {
+  max-width: 12ch;
+  margin: 0;
+  font-size: 4.5rem;
+  font-weight: 760;
+  line-height: 0.98;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.welcome-lead {
+  max-width: 33rem;
+  margin: 1.5rem 0 0;
+  color: var(--ink-soft);
+  font-size: 1.1875rem;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+/*
+ * The way back out of "Byt schema". Sits directly under the lead text, before
+ * the dropzone, so the escape route is read before the commitment — someone who
+ * pressed the button by accident should not have to hunt past the file picker
+ * to undo it.
+ */
+.welcome-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1.75rem;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 660;
+  transition: background-color 160ms var(--ease-out);
+}
+
+.welcome-back:hover {
+  background: var(--raised-surface);
+}
+
+.welcome-back svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.welcome-help {
+  max-width: 30rem;
+  margin-top: 3.5rem;
+  padding: 1.25rem;
+  border-radius: 12px;
+  background: var(--raised-surface);
+}
+
+.welcome-help h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  font-weight: 720;
+  letter-spacing: -0.012em;
+}
+
+.welcome-help p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.9375rem;
+}
+
+.welcome-steps {
+  margin: 0.75rem 0 0;
+  padding-left: 1.3rem;
+  color: var(--ink-soft);
+  font-size: 0.9375rem;
+}
+
+.welcome-steps li {
+  padding-left: 0.25rem;
+}
+
+.welcome-steps li + li {
+  margin-top: 0.65rem;
+}
+
+.welcome-desktop-tip {
+  margin-top: 1.25rem !important;
+}
+
+.file-dock {
+  position: relative;
+  display: flex;
+  min-height: 31rem;
+  flex-direction: column;
+  padding: 1.5rem;
+  border: 2px solid var(--ink);
+  border-radius: 16px;
+  background: var(--ink);
+  color: var(--surface);
+  cursor: pointer;
+  transition: transform 180ms var(--ease-out), background 180ms var(--ease-out);
+}
+
+.file-dock:hover,
+.file-dock--over {
+  transform: translateY(-3px);
+  background: oklch(26% 0.033 255);
+}
+
+.file-dock--busy {
+  cursor: wait;
+}
+
+.file-dock__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.file-dock__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.file-dock__icon {
+  display: grid;
+  width: 3.25rem;
+  height: 3.25rem;
+  place-items: center;
+  border: 1px solid oklch(100% 0 0 / 0.3);
+  border-radius: 10px;
+}
+
+.file-dock__icon svg {
+  width: 1.65rem;
+  height: 1.65rem;
+}
+
+.file-dock__format {
+  color: oklch(100% 0 0 / 0.68);
+  font-size: 0.75rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+}
+
+.file-dock__title {
+  max-width: 9ch;
+  margin: auto 0 1.5rem;
+  font-size: 2.5rem;
+  font-weight: 710;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+}
+
+.file-dock__button {
+  display: flex;
+  min-height: 3.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 720;
+}
+
+.file-dock__hint {
+  margin-top: 0.65rem;
+  color: oklch(100% 0 0 / 0.7);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+.file-dock__privacy {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 1.75rem;
+  color: oklch(100% 0 0 / 0.78);
+  font-size: 0.8125rem;
+}
+
+.file-dock__privacy svg,
+.privacy summary svg,
+.caveat svg,
+.alert svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.welcome-notes {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+  padding-top: 0.5rem;
+}
+
+.welcome-caveat {
+  padding: 1rem;
+  border-radius: 10px;
+  background: var(--raised-surface);
+  color: var(--ink-soft);
+}
+
+.caveat {
+  display: flex;
+  max-width: 34rem;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.caveat svg {
+  margin-top: 0.15rem;
+}
+
+.privacy {
+  width: min(100%, 34rem);
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+}
+
+.privacy summary {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 9px;
+  background: var(--raised-surface);
+  cursor: pointer;
+  font-weight: 650;
+  list-style: none;
+  transition: background-color 160ms var(--ease-out);
+}
+
+.privacy summary:hover {
+  background: oklch(91.5% 0.018 245);
+}
+
+.privacy summary::-webkit-details-marker {
+  display: none;
+}
+
+.privacy[open] {
+  width: min(100%, 34rem);
+}
+
+.privacy__chevron {
+  margin-left: auto;
+  transition: transform 180ms var(--ease-out);
+}
+
+.privacy[open] .privacy__chevron {
+  transform: rotate(180deg);
+}
+
+.privacy__body {
+  padding: 1rem 0 0.25rem;
+}
+
+.privacy__body p {
+  margin: 0 0 0.75rem;
+}
+
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  margin: 0 0 1.5rem;
+  padding: 1rem;
+  border-radius: 10px;
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.spinner {
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 2px solid oklch(100% 0 0 / 0.35);
+  border-top-color: var(--surface);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Person choice */
+
+.picker-shell {
+  padding: 0 clamp(1.25rem, 4vw, 3.5rem) 4rem;
+}
+
+.simple-bar,
+.app-bar {
+  min-height: 5.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.simple-bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+.simple-bar .quiet-button {
+  justify-self: start;
+}
+
+.quiet-button,
+.identity-button,
+.new-file-button,
+.original-button {
+  appearance: none;
+  min-height: 2.75rem;
+  cursor: pointer;
+  font-weight: 680;
+}
+
+.quiet-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.25rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+}
+
+.new-file-button,
+.original-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.8125rem;
+  transition: background 160ms var(--ease-out), border-color 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+
+.new-file-button:hover {
+  transform: translateY(-1px);
+  border-color: var(--ink-soft);
+  background: var(--surface-muted);
+}
+
+.original-button {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.original-button:hover {
+  transform: translateY(-1px);
+  background: oklch(27% 0.032 255);
+}
+
+.new-file-button svg,
+.original-button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.quiet-button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.quiet-button:hover {
+  color: var(--ink);
+}
+
+.picker-stage {
+  display: grid;
+  grid-template-columns: minmax(15rem, 0.7fr) minmax(19rem, 1fr);
+  gap: clamp(3rem, 9vw, 8rem);
+  padding-top: clamp(4rem, 10vh, 7rem);
+}
+
+.picker-copy h1 {
+  max-width: 10ch;
+  margin: 0;
+  font-size: 3.5rem;
+  font-weight: 760;
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.picker-copy > span {
+  display: block;
+  max-width: 24rem;
+  margin-top: 1rem;
+  color: var(--ink-soft);
+}
+
+.initials {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 0.625rem;
+}
+
+.initials button {
+  appearance: none;
+  display: flex;
+  min-height: 5.25rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.25rem;
+  border: 0;
+  border-radius: 11px;
+  cursor: pointer;
+  transition: filter 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+
+.initials button:hover {
+  transform: translateY(-2px);
+  filter: saturate(1.08) brightness(0.98);
+}
+
+.person-color--0 { --person-color: var(--pick-0); }
+.person-color--1 { --person-color: var(--pick-1); }
+.person-color--2 { --person-color: var(--pick-2); }
+.person-color--3 { --person-color: var(--pick-3); }
+.person-color--4 { --person-color: var(--pick-4); }
+.person-color--5 { --person-color: var(--pick-5); }
+.person-color--6 { --person-color: var(--pick-6); }
+.person-color--7 { --person-color: var(--pick-7); }
+.person-color--8 { --person-color: var(--pick-8); }
+.person-color--9 { --person-color: var(--pick-9); }
+.person-color--10 { --person-color: var(--pick-10); }
+.person-color--11 { --person-color: var(--pick-11); }
+.person-color--12 { --person-color: var(--pick-12); }
+.person-color--13 { --person-color: var(--pick-13); }
+
+.initials__item {
+  background: var(--person-color);
+  color: var(--ink);
+}
+
+.initials button span {
+  font-size: 1.375rem;
+  font-weight: 740;
+  letter-spacing: -0.025em;
+}
+
+.initials button svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--ink-soft);
+  transition: transform 160ms var(--ease-out);
+}
+
+.initials button:hover svg {
+  transform: translateX(3px);
+}
+
+/* Main schedule */
+
+.app-shell {
+  max-width: 50rem;
+  padding: 0 1.5rem 5rem;
+}
+
+.app-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg);
+}
+
+.app-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.app-month {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 740;
+  letter-spacing: -0.02em;
+}
+
+.identity-button {
+  min-width: 2.75rem;
+  padding: 0 0.75rem;
+  border: 1px solid color-mix(in oklab, var(--person-color) 70%, var(--ink));
+  border-radius: 999px;
+  background: var(--person-color);
+  color: var(--ink);
+  letter-spacing: 0.01em;
+}
+
+.identity-button:hover {
+  background: color-mix(in oklab, var(--person-color) 88%, var(--ink));
+  color: var(--ink);
+}
+
+.print-title {
+  display: none;
+}
+
+.next-shift {
+  /* Anchors the stretched button overlay below. */
+  position: relative;
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  border-radius: 16px;
+  overflow: hidden;
+  transition: transform 160ms var(--ease-out);
+}
+
+/* Only the pressable variant lifts — the empty-state card goes nowhere. */
+.next-shift:has(.next-shift__open):hover {
+  transform: translateY(-1px);
+}
+
+.next-shift--morning {
+  background: var(--morning);
+  color: var(--morning-ink);
+}
+
+.next-shift--day {
+  background: var(--day);
+  color: var(--day-ink);
+}
+
+.next-shift--evening {
+  background: var(--evening);
+  color: var(--evening-ink);
+}
+
+.next-shift--night {
+  background: var(--night);
+  color: var(--night-ink);
+}
+
+.next-shift--long {
+  background: var(--long);
+  color: var(--long-ink);
+}
+
+.next-shift--empty {
+  display: flex;
+  min-height: 14rem;
+  align-items: flex-end;
+  justify-content: space-between;
+  background: var(--surface-muted);
+  color: var(--ink);
+}
+
+.next-shift--empty h1 {
+  max-width: 17ch;
+  margin: 0.35rem 0;
+  font-size: 2rem;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+}
+
+.next-shift--empty > svg {
+  width: 3.5rem;
+  height: 3.5rem;
+  color: var(--ink-muted);
+}
+
+.next-shift__topline,
+.next-shift__main,
+.next-shift__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+}
+
+.next-shift__label {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 760;
+}
+
+.shift-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  font-weight: 680;
+}
+
+.shift-kind svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/*
+ * A floor, not a spacer. It keeps the card from collapsing when a shift has no
+ * notes at all, so the headline does not jump between sizes as you page
+ * through days. Lowered from 13rem, which reserved dead space under the time
+ * and let the notes drift far enough away to look unrelated to it.
+ */
+.next-shift__main {
+  min-height: 9.5rem;
+}
+
+.next-shift__date {
+  margin: 0 0 0.25rem;
+  font-size: 1.125rem;
+  font-weight: 650;
+}
+
+.next-shift__main h1 {
+  margin: 0;
+  font-size: 4.25rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 790;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+
+/* The flex row moved from the <h1> to the button now nested inside it, so the
+   dash keeps the gap it had before the card became pressable. */
+.next-shift__main h1 .next-shift__open {
+  display: flex;
+  align-items: baseline;
+  gap: 0.12em;
+}
+
+.next-shift__main h1 span {
+  font-weight: 400;
+  opacity: 0.65;
+}
+
+.next-shift__main > .time-icon {
+  flex: 0 0 auto;
+  opacity: 0.82;
+}
+
+.next-shift__footer {
+  align-items: flex-end;
+  /* Close under the time: these notes describe it, and a wide gap here is what
+     let them read as a separate block belonging to whatever sat nearest. */
+  margin-top: 0.5rem;
+}
+
+.next-shift__notes {
+  display: flex;
+  max-width: 30rem;
+  flex-direction: column;
+  /* Between the two groups: enough that beredskap reads as its own statement
+     rather than one more line of the shift's description. */
+  gap: 0.7rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+/*
+ * Notes that describe the shift in the headline. Held tight together — and, via
+ * the footer's reduced margin, close under the time itself — because proximity
+ * is what says "this is about that". Loose in a single column, "Du jobbar med
+ * FI" sat directly beneath a beredskap line and looked like it belonged to it.
+ */
+.next-shift__about-shift {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+/*
+ * The unsettled-slot warning on the headline card. The card is already painted
+ * in its band, so this cannot use the danger colours without turning into a
+ * second background fighting the first — it earns attention from the icon and
+ * from being first in the note stack instead.
+ */
+.next-shift__contested {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  font-weight: 620;
+}
+
+.next-shift__contested svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: none;
+  margin-top: 0.1rem;
+}
+
+/* Beredskap on the headline card. It never takes the card itself, so it reads
+   as one more note among the others rather than as a competing shift. */
+/*
+ * Beredskap: hours that are not the pass above, only the same date. Set a step
+ * back from the shift's own notes — smaller and slightly faded against the
+ * band — so the grouping survives even when both are one line each.
+ *
+ * Faded rather than recoloured: the card is painted in its band, and any ink
+ * that is not the band's own would read as a third meaning.
+ */
+.next-shift__standby {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
+  opacity: 0.82;
+}
+
+.next-shift__standby svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+
+/* On paper the icon alone carries it: backgrounds are off by default when
+   printing, so a colour-only warning would vanish. */
+.day-sheet__contested {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  margin: 0.5rem 0 0;
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.day-sheet__contested svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: none;
+  margin-top: 0.1rem;
+}
+
+.day-sheet__contested .person-pill {
+  color: var(--ink);
+}
+
+.coworker-note,
+.coworker-pills {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.coworker-note {
+  gap: 0.4rem;
+}
+
+.coworker-pills {
+  gap: 0.5rem;
+}
+
+/*
+ * A colleague and, when their hours differ from yours, the part of the shift
+ * they are actually there for. Kept as one unit so the qualifier cannot drift
+ * onto a line by itself and end up read against the wrong name — with two
+ * colleagues on a narrow card, "(från 08:00)" beside the wrong pill is worse
+ * than no qualifier at all.
+ */
+.colleague {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+/* Quieter than the pill: the name is what you scan for, the hours are the
+   correction. Same weight would make every shift look like an exception. */
+.colleague__hours {
+  font-size: 0.8125em;
+  opacity: 0.85;
+}
+
+/* An unfilled post. Outlined rather than filled, because every filled pill on
+   this page is a person and this is the absence of one. */
+.colleague__vacant {
+  padding: 0.1rem 0.45rem;
+  border: 1px dashed currentColor;
+  border-radius: 999px;
+  font-size: 0.8125em;
+  font-weight: 640;
+  opacity: 0.8;
+}
+
+.person-pill {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--person-color);
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 780;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+}
+
+/* An unresolved slot: one of these two will come, not both. The pair stays
+   visually one unit so it reads as a single position on the floor. */
+.person-pill-alt {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.person-pill-alt__or {
+  color: var(--ink-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+/*
+ * The whole card is the target. The button sits inside the <h1> — where the
+ * times already are — and is stretched over the card by the ::after overlay, so
+ * the markup stays valid (a <button> cannot contain a heading) while the hit
+ * area is the full card rather than a single word.
+ */
+.next-shift__open {
+  appearance: none;
+  position: static;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+}
+
+.next-shift__open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* Above the card's own content so the click always lands, but the pills and
+     text underneath are not interactive, so nothing is stolen. */
+  z-index: 1;
+}
+
+.next-shift__open:focus-visible {
+  outline: none;
+}
+
+/* Focus is drawn on the card, not on the times, because the card is what the
+   button covers — a ring around two words would misdescribe the target. */
+.next-shift:has(.next-shift__open:focus-visible) {
+  outline: 3px solid currentColor;
+  outline-offset: 3px;
+}
+
+.next-shift__arrow {
+  display: inline-flex;
+  min-height: 2.75rem;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.next-shift__arrow svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  transition: transform 160ms var(--ease-out);
+}
+
+.next-shift:hover .next-shift__arrow svg {
+  transform: translateX(3px);
+}
+
+.schedule-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.schedule-actions button {
+  appearance: none;
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out);
+}
+
+.schedule-actions button:hover {
+  border-color: var(--ink-soft);
+  background: var(--surface-muted);
+}
+
+.schedule-actions button > svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+/* The month is an overview, not the main answer. It sits below the next-shift
+   field and keeps its cells compact enough to scan as one object. */
+
+/*
+ * The month is one card: counts, grid and key inside a single surface, so it
+ * reads as a single object rather than three stacked fragments. The counts keep
+ * a slightly deeper fill and a dividing rule, which makes them the card's
+ * header band instead of a second card nested in the first.
+ */
+.month-glance {
+  margin-top: 4rem;
+  padding: 1.25rem;
+  border-radius: 16px;
+  background: var(--raised-surface);
+}
+
+/* Only the counts remain in this row now that the heading is gone, so they run
+   the full width instead of being pushed to one end of an empty bar. */
+.month-glance__head {
+  align-items: stretch;
+  justify-content: flex-start;
+  margin-bottom: 1rem;
+}
+
+/*
+ * The card's header band. Not its own surface — that would be a card inside a
+ * card — but a rule underneath separates the month's totals from the grid that
+ * details them.
+ */
+/*
+ * An even grid rather than a wrapping row. Flex-wrap broke wherever the line
+ * happened to run out, which on a mid-width screen left three counts up top and
+ * a single orphan below — worse than either a clean row or a tidy block.
+ *
+ * `auto-fit` with a minimum column keeps it honest at every width: four across
+ * when there is room, two by two when there is not, and it adapts on its own to
+ * the two counts that disappear when they are zero, so nothing has to know how
+ * many items there are.
+ */
+.glance-counts {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.75rem 1.5rem;
+  margin: 0;
+  padding: 0 0 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.glance-counts div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.glance-counts dt {
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+/* The figure leads and the label follows, so the numbers form the column the
+   eye scans; `order: -1` flips the DOM order that <dl> semantics require. */
+.glance-counts dd {
+  order: -1;
+  margin: 0;
+  font-size: 1.375rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 760;
+  letter-spacing: -0.02em;
+}
+
+.month-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.375rem;
+}
+
+.month-calendar__weekday {
+  padding: 0.2rem 0 0.45rem;
+  color: var(--ink-muted);
+  font-size: 0.6875rem;
+  font-weight: 720;
+  text-align: center;
+}
+
+.calendar-cell {
+  position: relative;
+  min-width: 0;
+  min-height: 5.25rem;
+  border-radius: 9px;
+}
+
+.calendar-cell--pad {
+  min-height: 0;
+}
+
+.calendar-cell--empty {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: oklch(62% 0.014 250);
+}
+
+.calendar-cell--scheduled {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0.5rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: filter 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+
+.calendar-cell--scheduled:hover {
+  z-index: 1;
+  transform: translateY(-2px);
+  filter: brightness(0.96);
+}
+
+.calendar-cell--morning {
+  background: var(--morning);
+  color: var(--morning-ink);
+}
+
+.calendar-cell--day {
+  background: var(--day);
+  color: var(--day-ink);
+}
+
+.calendar-cell--evening {
+  background: var(--evening);
+  color: var(--evening-ink);
+}
+
+.calendar-cell--night {
+  background: var(--night);
+  color: var(--night-ink);
+}
+
+.calendar-cell--long {
+  background: var(--long);
+  color: var(--long-ink);
+}
+
+/*
+ * A day you are not working. Still a button — it opens the day to show who is
+ * on — but it must not start advertising itself: the calendar's job is to show
+ * *your* month, and a free day given any weight of its own would compete with
+ * the days that actually ask something of you. So it looks exactly as it did,
+ * and the affordance only appears under a pointer that has already arrived.
+ */
+.calendar-cell--free {
+  appearance: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms var(--ease-out), background-color 160ms var(--ease-out);
+}
+
+.calendar-cell--free:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-muted);
+}
+
+/*
+ * A day whose only entry is beredskap. It keeps the empty cell's look — no
+ * fill, no band — because that is what it is: a day at home. The corner mark is
+ * the whole signal, and it is deliberately quiet; jour is an obligation, not a
+ * shift, and a filled cell here made BO's month read as 12 extra workdays.
+ */
+.calendar-cell--standby {
+  border-color: var(--line-strong);
+  color: var(--ink-soft);
+  cursor: pointer;
+  appearance: none;
+  font: inherit;
+  text-align: left;
+  position: relative;
+}
+
+/*
+ * The cell's annotation corner: top-right, opposite the date. Down beside the
+ * band label these read as part of that label — "morgon ⏻" — when they are
+ * separate facts about the day.
+ *
+ * A row, because a day can carry both marks at once. Beredskap sits first and
+ * the warning outermost, so the corner reads inward-to-outward by urgency and
+ * the alert lands where the eye goes on a grid scanned left to right.
+ */
+.calendar-cell__marks {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.calendar-cell__standby {
+  display: grid;
+  place-items: center;
+  color: var(--ink-muted);
+  opacity: 0.85;
+}
+
+/*
+ * "This day holds another pass the cell is not showing."
+ *
+ * Red, and the only red in the calendar: a one-hour morning hours away from the
+ * shift the cell names is the thing people actually miss, and missing it means
+ * not turning up. It has to survive on all four bands, so it is a filled disc
+ * with the glyph knocked out rather than red ink — red text on the dark navy
+ * night band would fail contrast badly.
+ */
+.calendar-cell__more {
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  border-radius: 999px;
+  /* Ringed in the cell's own ink, which `currentColor` still is at this point —
+     the glyph colour is set on the svg below, not here. Measured against the
+     four bands, every red usable at this size lands within 1.0–1.5:1 of the
+     kväll blue — same lightness, different hue — so the disc alone would
+     disappear on that band. The ring is what separates it, on all four. */
+  box-shadow: 0 0 0 1.5px currentColor;
+  background: var(--attention);
+}
+
+.calendar-cell__more svg {
+  width: 0.7rem;
+  height: 0.7rem;
+  /* White on the red disc, 6.1:1 — the same knocked-out treatment the other
+     corner marks use. */
+  color: oklch(100% 0 0);
+}
+
+.calendar-cell__standby svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+/* On a day that also has real work the band owns the cell, so the mark sits on
+   the fill and has to borrow the band's own ink to stay legible. */
+.calendar-cell--scheduled .calendar-cell__standby {
+  color: currentColor;
+  opacity: 0.75;
+}
+
+.calendar-cell--today {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/*
+ * Days behind you. The grid has to keep every cell — a month with holes in it
+ * stops reading as a month — so the past recedes instead of leaving.
+ *
+ * Not opacity. Fading a coloured cell blends it toward the card behind it,
+ * which turns navy into a muted purple and a night into something that looks
+ * like a *different band* rather than a past one. Colour means time of day and
+ * must not mean anything else, so the band is dropped outright instead: one
+ * neutral grey, obviously outside the scheme rather than a wrong place in it.
+ * The label still names the band for anyone who wants the detail.
+ */
+/* Screen only. Paper is a record rather than a plan, so a printout shows every
+   day in its own band; scoping the greying here is simpler than trying to undo
+   it inside the print block. */
+@media screen {
+  .calendar-cell--past.calendar-cell--empty {
+    border-color: var(--line);
+    color: oklch(72% 0.012 250);
+  }
+
+  /*
+   * Struck through, the way anyone crosses off a day on a paper calendar. The
+   * greying says "not a band"; the cross says "done" — a gesture people already
+   * read, and one that survives being the only thing left when the colour is
+   * gone. Drawn rather than marked up: two gradients, so no element is added to
+   * a grid cell that has to stay compact at phone width.
+   *
+   * Only days that were worked get one. An empty day was never a shift, so
+   * there is nothing on it to cross off.
+   */
+  .calendar-cell--past.calendar-cell--scheduled {
+    background-color: var(--surface-muted);
+    color: var(--ink-muted);
+    background-image:
+      linear-gradient(
+        to bottom right,
+        transparent calc(50% - 1px), currentColor calc(50% - 1px),
+        currentColor calc(50% + 1px), transparent calc(50% + 1px)
+      ),
+      linear-gradient(
+        to bottom left,
+        transparent calc(50% - 1px), currentColor calc(50% - 1px),
+        currentColor calc(50% + 1px), transparent calc(50% + 1px)
+      );
+    background-repeat: no-repeat;
+    /* Inset from the edges so the cross reads as a mark on the day rather than
+       as a border joining it to its neighbours. */
+    background-position: center;
+    background-size: 68% 68%;
+  }
+
+  /* Restore the real band on reach, and drop the cross with it: pointing at a
+     day is asking what it was, not being told again that it is over. */
+  .calendar-cell--past.calendar-cell--scheduled:hover,
+  .calendar-cell--past.calendar-cell--scheduled:focus-visible {
+    background-image: none;
+    background-color: var(--raised-surface);
+    color: var(--ink);
+  }
+}
+
+.calendar-cell__number {
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 760;
+  line-height: 1;
+}
+
+/*
+ * The "one of you two works this" mark, in the annotation corner above.
+ *
+ * Deliberately not a fifth band colour: colour means time of day here, and an
+ * unsettled slot can be any band. It reads as a warning through the icon shape
+ * and a ring, which also means it survives the greyscale printout the whole
+ * palette is tuned for. Dark bands get a light ring, light bands a dark one.
+ */
+.calendar-cell__contested {
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  background: currentColor;
+  flex: none;
+}
+
+.calendar-cell__contested svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  /* The icon punches back to the band's own fill, so the mark is a disc of the
+     text colour with the glyph knocked out of it — legible on all four bands
+     without naming any of them. */
+  color: var(--cell-bg, var(--surface));
+}
+
+.calendar-cell--morning { --cell-bg: var(--morning); }
+.calendar-cell--day { --cell-bg: var(--day); }
+.calendar-cell--evening { --cell-bg: var(--evening); }
+.calendar-cell--night { --cell-bg: var(--night); }
+.calendar-cell--long { --cell-bg: var(--long); }
+
+.calendar-cell__kind {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 720;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.calendar-cell__kind-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calendar-cell__kind-compact {
+  display: none;
+}
+
+.calendar-cell__kind svg {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: 0 0 auto;
+}
+
+.calendar-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem 1rem;
+  margin: 0.9rem 0 0;
+  padding: 0;
+  color: var(--ink-muted);
+  font-size: 0.6875rem;
+  list-style: none;
+}
+
+.calendar-key li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.calendar-key__mark {
+  display: grid;
+  width: 1.4rem;
+  height: 1.4rem;
+  place-items: center;
+  border-radius: 5px;
+}
+
+.calendar-key__mark svg {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.calendar-key__mark--morning { background: var(--morning); color: var(--morning-ink); }
+.calendar-key__mark--day { background: var(--day); color: var(--day-ink); }
+.calendar-key__mark--evening { background: var(--evening); color: var(--evening-ink); }
+.calendar-key__mark--night { background: var(--night); color: var(--night-ink); }
+.calendar-key__mark--long { background: var(--long); color: var(--long-ink); }
+/* Matches the corner mark, not a filled band: beredskap has no cell of its own
+   any more, so a solid swatch here would promise a colour the grid never uses. */
+.calendar-key__mark--standby {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-muted);
+}
+/* Matches the mark in the cell. On the key's white ground the ring is
+   unnecessary, but it is kept so the two read as the same object. */
+.calendar-key__mark--more {
+  background: var(--attention);
+  color: oklch(100% 0 0);
+  border-radius: 999px;
+}
+
+/* Matches the mark in the cell: a filled disc with the glyph knocked out. */
+.calendar-key__mark--contested {
+  background: var(--ink);
+  color: var(--surface);
+  border-radius: 999px;
+}
+
+.month-section {
+  margin-top: 4rem;
+}
+
+.section-head,
+.month-totals > header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.section-head h2,
+.month-totals h2,
+.account-footer h2,
+.day-sheet__head h2 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 750;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.day-ledger {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.day-row {
+  appearance: none;
+  display: grid;
+  width: 100%;
+  grid-template-columns: 4.4rem minmax(0, 1fr) 1.25rem;
+  align-items: stretch;
+  gap: 1.25rem;
+  padding: 0.75rem;
+  border: 0;
+  border-radius: 12px;
+  background: var(--raised-surface);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 160ms var(--ease-out),
+    transform 160ms var(--ease-out), opacity 160ms var(--ease-out);
+}
+
+.day-row:hover {
+  background: oklch(91.5% 0.018 245);
+  transform: translateY(-1px);
+}
+
+.day-row--today {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/*
+ * A day that holds only beredskap. It stays in the ledger — you are on call and
+ * need to see it — but it is not a working day, so it drops the card: no raised
+ * fill, no rounded surface, tighter padding, and the date shrinks to match the
+ * one line of text beside it.
+ *
+ * The result is roughly a third the height of a worked day, which is about the
+ * ratio of what it asks of you. Scanning the list, the eye now runs down the
+ * filled cards and skips these, which is the correct reading order: the page
+ * exists to answer "when do I next go in".
+ */
+.day-row--standby {
+  /* Padded to a 2.75rem floor rather than shrink-wrapped to the text: the row
+     is a tap target on a phone, held one-handed, and the line itself is only
+     ~1.1rem tall. Still about a third of a worked day. */
+  min-height: 2.75rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 8px;
+  background: transparent;
+  gap: 0.85rem;
+  align-items: center;
+}
+
+.day-row--standby:hover {
+  background: var(--surface-muted);
+  transform: none;
+}
+
+.day-row--standby .day-row__date {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+
+/* The big numeral is for days you work. Here it only has to identify the row. */
+.day-row--standby .day-row__date strong {
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.day-row--standby .day-row__date > span {
+  margin-top: 0;
+  font-size: 0.75rem;
+}
+
+/* "idag" would wrap the row onto a second line at this height. */
+.day-row--standby .day-row__date em {
+  margin-top: 0;
+  margin-left: 0.1rem;
+}
+
+.day-row--standby .day-row__standby {
+  margin-top: 0;
+}
+
+/* The arrow is a promise of more detail. A standby row has none worth the
+   journey — the line already says everything the sheet would. */
+.day-row--standby .day-row__arrow {
+  opacity: 0.35;
+}
+
+/*
+ * Days already worked, folded away. Closed by default: the page is for what is
+ * coming, and late in the month the finished days outnumber the rest several to
+ * one.
+ *
+ * Opened, the rows are dimmed. The fade is no longer doing the hiding — the
+ * disclosure does that — so it is free to say something quieter: these are
+ * behind you. It also keeps the boundary legible when the list is open and the
+ * upcoming days sit directly below it at full strength.
+ */
+.past-days {
+  margin-bottom: 0.75rem;
+}
+
+.past-days__list .day-row {
+  opacity: 0.55;
+}
+
+/* Full strength on reach: if you are pointing at a row you want to read it. */
+.past-days__list .day-row:hover,
+.past-days__list .day-row:focus-visible {
+  opacity: 1;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .past-days__list .day-row {
+    opacity: 1;
+  }
+}
+
+.past-days summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: var(--raised-surface);
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 0.9375rem;
+  font-weight: 680;
+  list-style: none;
+  transition: background-color 160ms var(--ease-out);
+}
+
+/* Safari draws its own triangle through ::-webkit-details-marker. */
+.past-days summary::-webkit-details-marker {
+  display: none;
+}
+
+.past-days summary:hover {
+  background: oklch(91.5% 0.018 245);
+}
+
+.past-days summary svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: 0 0 auto;
+  transition: transform 200ms var(--ease-out);
+}
+
+.past-days[open] summary {
+  margin-bottom: 0.75rem;
+}
+
+.past-days[open] summary svg {
+  transform: rotate(180deg);
+}
+
+@media print {
+  /* Paper has no disclosure, and a printout of half the month would be a poor
+     record. `content-visibility: visible` forces a closed <details> to render
+     its contents; without it the browser prints only the summary. */
+  .past-days summary {
+    display: none;
+  }
+
+  .past-days > *:not(summary) {
+    content-visibility: visible !important;
+  }
+
+  /* No dimming on paper: a faded half would only look like a bad print. */
+  .past-days__list .day-row {
+    opacity: 1;
+  }
+}
+
+.day-row__date {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.day-row__date strong {
+  font-size: 2rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 760;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.day-row__date > span {
+  margin-top: 0.2rem;
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  text-transform: lowercase;
+}
+
+.day-row__date em {
+  margin-top: 0.35rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 0.6875rem;
+  font-style: normal;
+  font-weight: 720;
+}
+
+.day-row__content,
+.day-row__shifts,
+.shift-block {
+  display: flex;
+  min-width: 0;
+}
+
+.day-row__content,
+.day-row__shifts {
+  flex-direction: column;
+}
+
+.day-row__content {
+  justify-content: center;
+}
+
+.day-row__shifts {
+  gap: 0.375rem;
+}
+
+/*
+ * Beredskap under the day's real shifts: a line of text, not a block. Sized and
+ * coloured like a caption so a jour-heavy month reads as mostly free time —
+ * which it is — instead of as a wall of filled blocks.
+ */
+.day-row__standby {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.375rem;
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  line-height: 1.3;
+}
+
+.day-row__standby svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: none;
+}
+
+/* A jour-only day has no blocks above the note, so it would otherwise sit
+   flush against the top of the row. */
+.day-row__shifts:empty + .day-row__standby {
+  margin-top: 0;
+}
+
+.shift-block {
+  min-height: 3.25rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 9px;
+}
+
+.shift-block__time {
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 760;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+/* Icon only — the kind's name is still in the DOM for screen readers, but it is
+   visually-hidden and so takes no space here. */
+.shift-block__kind {
+  display: inline-flex;
+  align-items: center;
+}
+
+.shift-block__kind svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.shift-block--morning {
+  background: var(--morning);
+  color: var(--morning-ink);
+}
+
+.shift-block--day {
+  background: var(--day);
+  color: var(--day-ink);
+}
+
+.shift-block--evening {
+  background: var(--evening);
+  color: var(--evening-ink);
+}
+
+.shift-block--night {
+  background: var(--night);
+  color: var(--night-ink);
+}
+
+.shift-block--long {
+  background: var(--long);
+  color: var(--long-ink);
+}
+
+.shift-block--sleep {
+  background: var(--sleep);
+  color: var(--sleep-ink);
+}
+
+.day-row__arrow svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--ink-muted);
+  transition: transform 160ms var(--ease-out);
+}
+
+.day-row:hover .day-row__arrow svg {
+  transform: translateX(3px);
+}
+
+.empty-state {
+  margin: 0;
+  padding: 2rem;
+  border-radius: 12px;
+  background: var(--raised-surface);
+  color: var(--ink-soft);
+}
+
+.month-totals {
+  display: grid;
+  grid-template-columns: minmax(11rem, 0.7fr) minmax(18rem, 1.3fr);
+  gap: clamp(2rem, 7vw, 6rem);
+  align-items: start;
+  margin-top: 4.5rem;
+  padding: 0;
+}
+
+.month-totals > header {
+  display: block;
+  margin: 0;
+}
+
+.month-totals dl {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.month-totals dl div {
+  display: grid;
+  min-height: 4.75rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2rem;
+  padding: 0 1rem;
+  border-radius: 9px;
+  background: var(--raised-surface);
+}
+
+.month-totals dt {
+  color: var(--ink-soft);
+  font-size: 0.9375rem;
+  font-weight: 680;
+}
+
+.month-totals dd {
+  display: flex;
+  min-width: 7rem;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  margin: 0;
+  color: var(--ink);
+}
+
+.month-totals dd strong {
+  font-size: 2rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 760;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.month-totals dd span {
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  font-weight: 680;
+  letter-spacing: 0;
+}
+
+.app-caveat {
+  max-width: none;
+  margin-top: 2rem;
+  padding: 1rem 0;
+}
+
+.caveat__action {
+  appearance: none;
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: inherit;
+  font-weight: 750;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+.caveat__action:hover {
+  text-decoration-thickness: 2px;
+}
+
+.account-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-top: 4rem;
+  padding: 1.5rem;
+  border-radius: 12px;
+  background: var(--raised-surface);
+}
+
+.account-footer h2 {
+  font-size: 1rem;
+  letter-spacing: -0.015em;
+}
+
+.account-footer p {
+  max-width: 34rem;
+  margin: 0.35rem 0 0;
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+}
+
+.account-footer button {
+  appearance: none;
+  min-height: 2.75rem;
+  flex: 0 0 auto;
+  padding: 0.5rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--danger-ink);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+/* Day detail */
+
+.day-sheet {
+  width: min(100% - 1.5rem, 36rem);
+  max-height: calc(100dvh - 1.5rem);
+  margin: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 4px 8px oklch(10% 0.03 255 / 0.22);
+}
+
+.day-sheet::backdrop {
+  background: oklch(12% 0.03 255 / 0.62);
+}
+
+.day-sheet__panel {
+  display: flex;
+  width: 100%;
+  max-height: calc(100dvh - 1.5rem);
+  flex-direction: column;
+  overflow: hidden;
+  padding: 1.5rem;
+}
+
+.day-sheet__body {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.day-sheet__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.5rem;
+}
+
+.day-sheet__head button {
+  appearance: none;
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.day-sheet__head button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.day-sheet__navigation {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.day-sheet__navigation button {
+  appearance: none;
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  border-radius: 8px;
+  background: var(--raised-surface);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.day-sheet__navigation button:hover:not(:disabled) {
+  background: oklch(91.5% 0.018 245);
+}
+
+.day-sheet__navigation button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.day-sheet__navigation button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.day-sheet__shifts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.day-sheet__shift {
+  padding: 1rem;
+  border-radius: 10px;
+}
+
+.day-sheet__shift--morning { background: var(--morning); color: var(--morning-ink); }
+.day-sheet__shift--day { background: var(--day); color: var(--day-ink); }
+.day-sheet__shift--evening { background: var(--evening); color: var(--evening-ink); }
+.day-sheet__shift--night { background: var(--night); color: var(--night-ink); }
+.day-sheet__shift--long { background: var(--long); color: var(--long-ink); }
+.day-sheet__shift--jour { background: var(--jour); color: var(--jour-ink); }
+.day-sheet__shift--sleep { background: var(--sleep); color: var(--sleep-ink); }
+
+/*
+ * Beredskap in the detail view. Every block is kept here — this is where exact
+ * times get checked — but an outline instead of a fill says "held, not worked"
+ * without the block claiming the same weight as a real pass.
+ */
+.day-sheet__shift--standby {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-soft);
+}
+
+.day-sheet__shift--standby .day-sheet__time > strong {
+  font-weight: 680;
+}
+
+.day-sheet__kind {
+  display: inline-flex;
+  align-items: center;
+}
+
+.day-sheet__kind svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.day-sheet__time {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.day-sheet__time > strong {
+  font-size: 1.375rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+}
+
+.day-sheet__shift p {
+  margin: 0.75rem 0 0;
+  color: currentColor;
+  font-size: 0.875rem;
+  opacity: 0.82;
+}
+
+.day-sheet__shift .day-sheet__coworkers {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  opacity: 1;
+}
+
+.day-sheet__totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin: 1.5rem 0 0;
+}
+
+.day-sheet__totals div {
+  display: flex;
+  flex-direction: column;
+}
+
+.day-sheet__totals dt {
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+}
+
+.day-sheet__totals dd {
+  margin: 0.15rem 0 0;
+  font-size: 1rem;
+  font-weight: 720;
+}
+
+/*
+ * The day sheet opened on a day you are not working. The headline fact is that
+ * you are off — stated first and plainly, so nobody reads the roster below as
+ * their own hours — and the roster answers the only question a free day raises:
+ * who is in, and until when.
+ */
+.day-off {
+  margin-top: 1rem;
+}
+
+.day-off__lead {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 720;
+  letter-spacing: -0.025em;
+}
+
+.day-off__title {
+  margin: 1.5rem 0 0.5rem;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.day-off__empty {
+  margin: 0.5rem 0 0;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.day-off__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  gap: 1px;
+  list-style: none;
+}
+
+.on-duty {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.on-duty:last-child {
+  border-bottom: 0;
+}
+
+.on-duty__who {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+/* Pushed to the far edge so the hours line up down the column and the list can
+   be read as a timetable rather than as sentences. */
+.on-duty__hours {
+  margin-left: auto;
+  color: var(--ink-soft);
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Someone on call is quieter than someone in the building — you cannot hand
+   anything over to them, and the list should not suggest otherwise. */
+.on-duty--standby .on-duty__hours {
+  color: var(--ink-muted);
+}
+
+.on-duty__tag {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+}
+
+.on-duty__tag svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+@media (max-width: 760px) {
+  /*
+   * Below desktop the counts come down to pass, plus jour when there is any —
+   * one line, no wrapping. Four counts only ever fitted comfortably on a wide
+   * screen; anywhere narrower they broke into an uneven block that cost more
+   * room than it earned. Arbetsdagar and nätter are both countable straight off
+   * the calendar underneath, which is why they are the two that go.
+   *
+   * The compound selector is deliberate: the base `.glance-counts div` rule is
+   * class+element and would outrank a lone class.
+   */
+  .glance-counts div.glance-counts__wide {
+    display: none;
+  }
+
+  .picker-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .welcome-grid {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding-block: 2rem 1.5rem;
+  }
+
+  .welcome-copy {
+    display: contents;
+  }
+
+  .welcome-copy h1 {
+    order: 1;
+  }
+
+  .welcome-lead {
+    order: 2;
+  }
+
+  /* Explicit order because .welcome-copy is display:contents here, so this
+     button is laid out as a direct child of the grid alongside the dropzone. */
+  .welcome-back {
+    order: 3;
+    align-self: flex-start;
+  }
+
+  .file-dock {
+    width: 100%;
+    order: 4;
+    min-height: 15rem;
+    margin-top: 1.5rem;
+  }
+
+  .welcome-help {
+    order: 5;
+    margin-top: 2.5rem;
+  }
+
+  .welcome-copy h1 {
+    max-width: 12ch;
+    font-size: 3.75rem;
+  }
+
+  .welcome-notes {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .privacy summary {
+    justify-content: flex-start;
+  }
+
+  .picker-stage {
+    gap: 3rem;
+    padding-top: 4rem;
+  }
+
+  .picker-copy h1 {
+    max-width: 12ch;
+    font-size: 3rem;
+  }
+
+  .month-totals {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .welcome-shell,
+  .picker-shell {
+    padding-inline: 1rem;
+  }
+
+  .welcome-shell {
+    padding-top: 1rem;
+  }
+
+  .welcome-grid {
+    padding-top: 1.5rem;
+  }
+
+  .welcome-copy h1 {
+    font-size: 3.125rem;
+  }
+
+  .welcome-lead {
+    font-size: 1.0625rem;
+  }
+
+  .file-dock {
+    min-height: 13.5rem;
+    padding: 1rem;
+  }
+
+  .file-dock__icon {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .file-dock__format,
+  .file-dock__hint {
+    display: none;
+  }
+
+  .file-dock__title {
+    max-width: none;
+    margin: 0.9rem 0;
+    font-size: 1.5rem;
+  }
+
+  .file-dock__button {
+    min-height: 3rem;
+  }
+
+  .file-dock__privacy {
+    margin-top: 0.65rem;
+  }
+
+  .simple-bar {
+    grid-template-columns: 1fr auto;
+  }
+
+  .picker-stage {
+    padding-top: 3rem;
+  }
+
+  .picker-copy h1 {
+    font-size: 2.75rem;
+  }
+
+  /* `--bleed` is the shell's own side padding, which the full-bleed sections
+     below cancel out with a matching negative margin. Kept as a variable so the
+     two can never disagree — the narrower breakpoint changes this one value and
+     everything that breaks out follows it. */
+  .app-shell {
+    --bleed: 1rem;
+    padding-inline: var(--bleed);
+  }
+
+  .app-bar {
+    min-height: 4.75rem;
+  }
+
+  .next-shift {
+    margin-inline: calc(var(--bleed) * -1);
+    padding: 1.25rem var(--bleed);
+    border-radius: 0;
+  }
+
+  .next-shift__main {
+    min-height: 11rem;
+  }
+
+  .next-shift__main h1 {
+    font-size: 3rem;
+  }
+
+  .next-shift__main > .time-icon {
+    width: 3rem;
+    height: 3rem;
+  }
+
+  .next-shift__footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .next-shift__footer button {
+    align-self: flex-end;
+  }
+
+  .schedule-actions {
+    margin-inline: 0;
+  }
+
+  .month-section {
+    margin-top: 3.5rem;
+  }
+
+  /*
+   * Full-bleed, flush against the next-shift card above it. That card already
+   * breaks out of the shell's padding at this width, so leaving the month card
+   * inset made the two read as different kinds of thing with an unexplained
+   * channel between them. Same negative margin, same squared corners, no gap:
+   * the page becomes two stacked bands rather than a card floating under one.
+   */
+  .month-glance {
+    /* `margin-top: 0` closes the channel to the next-shift card above, so the
+       two bands meet instead of floating apart. */
+    margin: 0 calc(var(--bleed) * -1);
+    padding: 1.25rem var(--bleed);
+    border-radius: 0;
+  }
+
+  .month-glance__head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  /* Just a tighter gap; the grid handles the wrapping. The padding that used to
+     be here was left from when the counts were their own card. */
+  .glance-counts {
+    gap: 0.6rem 1rem;
+  }
+
+
+  .month-calendar {
+    gap: 0.25rem;
+  }
+
+  .calendar-cell {
+    min-height: 4.25rem;
+    padding: 0.4rem;
+    border-radius: 7px;
+  }
+
+  .calendar-cell--pad {
+    min-height: 0;
+  }
+
+  .calendar-cell__number {
+    font-size: 0.75rem;
+  }
+
+  .calendar-cell__kind {
+    gap: 0.15rem;
+    font-size: 0.5625rem;
+  }
+
+  .calendar-cell__kind svg {
+    width: 0.7rem;
+    height: 0.7rem;
+  }
+
+  .calendar-key {
+    gap: 0.5rem 0.75rem;
+  }
+
+  /* Full-bleed like the cards above, for the same reason: at this width the
+     shell's side padding is most of the row, and the inset made each day look
+     like a separate floating object rather than one list. Squared off, edge to
+     edge, separated by the gap between them. */
+  /* `width: auto` matters: with `width: 100%` the box stays the parent's width
+     and the negative margin only shifts it left, so it overhangs one edge and
+     stops short of the other. Auto lets both margins widen it. */
+  .day-row,
+  .past-days summary {
+    width: auto;
+    margin-inline: calc(var(--bleed) * -1);
+    border-radius: 0;
+  }
+
+  .day-row {
+    grid-template-columns: 3.25rem minmax(0, 1fr) 0.85rem;
+    gap: 0.75rem;
+    padding-block: 1rem;
+    padding-inline: var(--bleed);
+  }
+
+  .past-days summary {
+    padding-inline: var(--bleed);
+  }
+
+  /* The today outline sits outside the box, which would be cut off now that the
+     row reaches the screen edge. An inset ring draws in the same place without
+     leaving the element. */
+  .day-row--today {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--ink);
+  }
+
+  .shift-block {
+    min-height: 3.75rem;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.6rem 0.7rem;
+  }
+
+  .shift-block__time {
+    font-size: 0.9375rem;
+  }
+
+  .month-totals dl div {
+    min-height: 4.25rem;
+  }
+
+  .account-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .day-sheet {
+    width: 100%;
+    height: 100dvh;
+    max-width: none;
+    max-height: 100dvh;
+    inset: 0;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  .day-sheet__panel {
+    height: 100%;
+    max-height: 100%;
+    padding: max(1.25rem, env(safe-area-inset-top)) 1rem
+      max(1rem, env(safe-area-inset-bottom));
+  }
+
+  /* Stays a row at every width now. Stacking was for a long kind label that
+     would otherwise wrap under the time; a lone 1rem icon always fits beside
+     it, and a column would strand the glyph on its own line. */
+}
+
+@media (max-width: 400px) {
+  .app-shell {
+    --bleed: 0.75rem;
+    max-width: 100%;
+    padding-inline: var(--bleed);
+    overflow-x: clip;
+  }
+
+  .app-bar {
+    display: grid;
+    min-height: 0;
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+    padding-block: 0.75rem;
+  }
+
+  .app-bar__actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .new-file-button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .original-button {
+    flex: 1.2;
+    justify-content: center;
+  }
+
+  .next-shift {
+    margin-inline: -0.75rem;
+    padding-inline: 0.75rem;
+  }
+
+  .next-shift__main {
+    min-height: 0;
+    min-width: 0;
+    margin-top: 2.75rem;
+  }
+
+  .next-shift__main > .time-icon {
+    display: none;
+  }
+
+  .next-shift__main h1 {
+    max-width: 100%;
+    font-size: 2.375rem;
+  }
+
+  .next-shift__date {
+    font-size: 1rem;
+  }
+
+  .next-shift__footer {
+    align-items: flex-end;
+    flex-direction: row;
+    gap: 1rem;
+    /* Was 2.75rem, which on the narrowest screen left the notes stranded far
+       below the time they describe — the width where that misreading is worst,
+       since there is no room for anything else to sit between them. */
+    margin-top: 1.25rem;
+  }
+
+  .next-shift__notes {
+    max-width: 12rem;
+    /* Still two groups here. Tighter than on a wide card, but never collapsed
+       to a single even column, or the grouping is lost exactly where the card
+       is most cramped. */
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+  }
+
+  .next-shift__standby {
+    font-size: 0.75rem;
+  }
+
+  .next-shift__footer button {
+    align-self: flex-end;
+    min-height: 2.25rem;
+    font-size: 0.875rem;
+    white-space: nowrap;
+  }
+
+  .schedule-actions {
+    justify-content: stretch;
+  }
+
+  .schedule-actions button {
+    flex: 1;
+  }
+
+  .glance-counts {
+    gap: 0.55rem 1rem;
+  }
+
+  .glance-counts dd {
+    font-size: 1.25rem;
+  }
+
+  .month-calendar {
+    gap: 0.2rem;
+  }
+
+  .calendar-cell {
+    min-height: 3.875rem;
+    padding: 0.3rem;
+    border-radius: 6px;
+  }
+
+  .calendar-cell__kind {
+    gap: 0.12rem;
+    font-size: 0.5625rem;
+  }
+
+  .calendar-cell__kind-label {
+    display: none;
+  }
+
+  .calendar-cell__kind-compact {
+    display: inline;
+  }
+
+  .calendar-key {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem 0.75rem;
+    padding: 0.75rem;
+    border-radius: 9px;
+    background: var(--raised-surface);
+  }
+
+  .calendar-key li {
+    min-width: 0;
+  }
+
+  .calendar-key__mark {
+    width: 1.75rem;
+    height: 1.75rem;
+    flex: 0 0 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media print {
+  @page {
+    margin: 14mm;
+  }
+
+  :root,
+  html,
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  .app-shell {
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    padding: 0;
+  }
+
+  .app-bar,
+  .next-shift,
+  .schedule-actions,
+  .account-footer,
+  .day-sheet {
+    display: none !important;
+  }
+
+  .print-title {
+    display: block;
+    margin: 0 0 8mm;
+    font-size: 20pt;
+  }
+
+  .month-section,
+  .month-totals {
+    margin-top: 0;
+  }
+
+  .month-glance {
+    margin: 0 0 8mm;
+  }
+
+  /* No card on paper: the fill costs ink and the printed sheet has no competing
+     background for the counts to stand out from. */
+  .glance-counts {
+    gap: 4mm;
+    padding: 0;
+    background: none;
+  }
+
+  .month-calendar {
+    gap: 1mm;
+  }
+
+  .calendar-cell {
+    min-height: 12mm;
+    border: 1px solid #bbb;
+    border-radius: 2mm;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  .calendar-cell--pad {
+    border: 0;
+  }
+
+  .calendar-key__mark {
+    border: 1px solid #999;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  .section-head {
+    margin-bottom: 4mm;
+  }
+
+  .day-row {
+    min-height: 0;
+    break-inside: avoid;
+    grid-template-columns: 14mm 1fr;
+    padding: 3mm 0;
+    color: #000;
+  }
+
+  .day-row__date strong {
+    font-size: 15pt;
+  }
+
+  .day-row__arrow {
+    display: none;
+  }
+
+  .shift-block {
+    min-height: 0;
+    flex-direction: row;
+    padding: 1.5mm 2mm;
+    border: 1px solid #bbb;
+    background: transparent !important;
+    color: #000 !important;
+  }
+
+  /* The icon is the only thing left naming the band on paper: the fill is
+     dropped above so colour cannot carry it, and the text label is gone from
+     the screen design too. Hiding the glyph here — which it used to do, back
+     when the word sat beside it — would print a column of bare times. */
+  .shift-block__kind svg {
+    display: block;
+  }
+
+  .month-totals {
+    margin-top: 8mm;
+    break-inside: avoid;
+  }
+
+  .app-caveat {
+    margin-top: 6mm;
+    color: #333;
+  }
+}
